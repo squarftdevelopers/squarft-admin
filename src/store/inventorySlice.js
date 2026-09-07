@@ -90,12 +90,16 @@ const applyLocalFilters = (projects, filters) => {
   const { search, status, propertySource, priceRange, location } = filters;
   
   return projects.filter(project => {
+    const projectName = project.name || '';
+    const projectBuilder = project.builder || '';
+    const projectLocation = project.location || [project.area, project.city].filter(Boolean).join(', ');
+
     // Search filter (in case frontend wants local refining)
     const matchesSearch = 
       !search ||
-      project.name.toLowerCase().includes(search.toLowerCase()) || 
-      (project.builder && project.builder.toLowerCase().includes(search.toLowerCase())) ||
-      project.location.toLowerCase().includes(search.toLowerCase());
+      projectName.toLowerCase().includes(search.toLowerCase()) || 
+      projectBuilder.toLowerCase().includes(search.toLowerCase()) ||
+      projectLocation.toLowerCase().includes(search.toLowerCase());
     
     // Status filter
     const matchesStatus = status === 'All' || project.status === status;
@@ -105,15 +109,16 @@ const applyLocalFilters = (projects, filters) => {
     
     // Price range filter
     let matchesPriceRange = true;
-    if (priceRange !== 'all' && project.priceRange) {
-      const priceStr = project.priceRange.toLowerCase();
-      let minPrice = 0;
+    if (priceRange !== 'all') {
+      const numericPrice = Number(project.inventoryMinPrice || project.priceFrom || project.minPrice || project.price_from);
+      const priceStr = (project.priceRange || '').toLowerCase();
+      let minPrice = Number.isFinite(numericPrice) && numericPrice > 0 ? numericPrice / 100000 : 0;
       
       // Parse the minimum price
-      if (priceStr.includes('cr')) {
+      if (!minPrice && priceStr.includes('cr')) {
         const match = priceStr.match(/(\d+\.?\d*)\s*cr/i);
         if (match) minPrice = parseFloat(match[1]) * 100; // Convert Cr to Lacs
-      } else if (priceStr.includes('l') || priceStr.includes('lacs')) {
+      } else if (!minPrice && (priceStr.includes('l') || priceStr.includes('lacs'))) {
         const match = priceStr.match(/(\d+\.?\d*)\s*(l|lacs?)/i);
         if (match) minPrice = parseFloat(match[1]);
       }
@@ -138,7 +143,7 @@ const applyLocalFilters = (projects, filters) => {
     // Location filter
     let matchesLocation = true;
     if (location !== 'all') {
-      matchesLocation = project.location.toLowerCase().includes(location.toLowerCase());
+      matchesLocation = projectLocation.toLowerCase().includes(location.toLowerCase());
     }
     
     return matchesSearch && matchesStatus && matchesSource && matchesPriceRange && matchesLocation;

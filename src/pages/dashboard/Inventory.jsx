@@ -59,6 +59,23 @@ const getMinimumPriceInLacs = (priceRange = '') => {
     return unit === 'cr' ? value * 100 : value;
 };
 
+const getProjectMinimumPriceInLacs = (project = {}) => {
+    const numericCandidates = [
+        project.inventoryMinPrice,
+        project.priceFrom,
+        project.minPrice,
+        project.price_from,
+    ];
+
+    const numericValue = numericCandidates
+        .map((value) => Number(value))
+        .find((value) => Number.isFinite(value) && value > 0);
+
+    if (numericValue) return numericValue / 100000;
+
+    return getMinimumPriceInLacs(project.priceRange || '');
+};
+
 const matchesProjectFilters = (project, filters) => {
     const search = filters.search?.toLowerCase() || '';
     const name = project.name || '';
@@ -69,8 +86,8 @@ const matchesProjectFilters = (project, filters) => {
         builder.toLowerCase().includes(search) ||
         location.toLowerCase().includes(search);
 
-    const minPrice = getMinimumPriceInLacs(project.priceRange || '');
-    let matchesPriceRange = true;
+    const minPrice = getProjectMinimumPriceInLacs(project);
+    let matchesPriceRange;
 
     switch (filters.priceRange) {
         case 'under-1cr':
@@ -447,12 +464,20 @@ const Inventory = () => {
 
     // Fetch backend data based on source / search filters
     useEffect(() => {
+        const params = {
+            search: filters.search,
+            status: filters.status === 'All' ? '' : filters.status,
+            priceRange: filters.priceRange,
+            location: filters.location,
+            branchId: filters.branchId,
+        };
+
         if (filters.propertySource === 'all') {
-            dispatch(getProjects({ branchId: filters.branchId }));
+            dispatch(getProjects(params));
         } else {
-            dispatch(getSourceProfiles({ source: filters.propertySource, search: filters.search, branchId: filters.branchId }));
+            dispatch(getSourceProfiles({ ...params, source: filters.propertySource }));
         }
-    }, [dispatch, filters.propertySource, filters.search, filters.branchId]);
+    }, [dispatch, filters.propertySource, filters.search, filters.status, filters.priceRange, filters.location, filters.branchId]);
 
     useEffect(() => {
         fetchAccessibleBranches({ limit: 200 })
