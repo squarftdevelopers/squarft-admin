@@ -1,9 +1,9 @@
 import { createSlice } from '@reduxjs/toolkit';
-import { sample2Visits } from '../data/mockData';
-
 const initialState = {
-  visits: sample2Visits,
-  loading: false,
+  // Visits must always come from the backend. Mock records caused a brief
+  // flash of incorrect visits before the API response replaced them.
+  visits: [],
+  loading: true,
   error: null,
 };
 
@@ -11,8 +11,13 @@ const visitsSlice = createSlice({
   name: 'visits',
   initialState,
   reducers: {
+    setVisitsLoading: (state, action) => {
+      state.loading = Boolean(action.payload);
+    },
     setVisits: (state, action) => {
-      state.visits = action.payload;
+      state.visits = Array.isArray(action.payload) ? action.payload : [];
+      state.loading = false;
+      state.error = null;
     },
     addVisit: (state, action) => {
       if (action.payload?.id) {
@@ -50,5 +55,5 @@ const visitsSlice = createSlice({
   },
 });
 
-export const { setVisits, addVisit, updateVisitStatus, updateVisit, addVisitNote } = visitsSlice.actions;
+export const { setVisitsLoading, setVisits, addVisit, updateVisitStatus, updateVisit, addVisitNote } = visitsSlice.actions;
 export default visitsSlice.reducer;

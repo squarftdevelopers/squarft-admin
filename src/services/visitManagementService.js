@@ -104,6 +104,9 @@ export const normalizeVisit = (visit = {}) => {
     customerId: visit.user_id || visit.customerId,
     customerName: visit.customer_name || visit.customerName || 'Customer',
     customerPhone: visit.customer_phone || visit.customerPhone || '',
+    projectName: visit.project_name || visit.projectName || '',
+    branchName: visit.branch_name || visit.branchName || '',
+    visitorsCount: Number(visit.visitors_count || visit.visitorsCount || 1),
     propertyId: visit.property_id || visit.propertyId,
     propertyCount: Number(visit.property_count || visit.propertyCount || 1),
     property: {

@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import {
-    BellRing, Building2, Calendar, CalendarCheck, CheckCircle2, ChevronRight, Clock,
+    BellRing, Building2, Calendar, CalendarCheck, ChevronRight, Clock,
     Eye, KeyRound, LoaderCircle, PhoneCall, Plus, Save,
     Search, ShieldCheck, TrendingUp
 } from 'lucide-react';
-import { addDeal, setSelectedDeal, updateDealDetails } from '../../store/dealsSlice';
-import { addVisit, addVisitNote, setVisits, updateVisit, updateVisitStatus } from '../../store/visitsSlice';
+import { addDeal, setSelectedDeal } from '../../store/dealsSlice';
+import { addVisit, addVisitNote, setVisits, setVisitsLoading, updateVisit, updateVisitStatus } from '../../store/visitsSlice';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
@@ -145,16 +145,6 @@ const getVisitPhotos = (visit) => (
         : [])
 );
 
-const todayDisplayDate = () => {
-    const today = new Date();
-    return `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getFullYear()).slice(-2)}`;
-};
-
-const getCityFromAddress = (address = '') => {
-    const parts = String(address).split(',').map((part) => part.trim()).filter(Boolean);
-    return parts.length > 1 ? parts[parts.length - 2] : parts[0] || '-';
-};
-
 const parsePropertyPrice = (price) => {
     const rawPrice = String(price || '').replace(/,/g, '').trim();
     const numericValue = Number(rawPrice.match(/\d+(\.\d+)?/)?.[0] || 0);
@@ -164,61 +154,6 @@ const parsePropertyPrice = (price) => {
     if (lowerPrice.includes('cr')) return Math.round(numericValue * 10000000);
     if (lowerPrice.includes('lakh') || lowerPrice.includes('lac') || /\bl\b/.test(lowerPrice)) return Math.round(numericValue * 100000);
     return Math.round(numericValue);
-};
-
-const buildDealFromVisit = (visit, property, dealCode) => {
-    const expectedPrice = parsePropertyPrice(property?.price);
-    const negotiatedPrice = expectedPrice ? Math.round(expectedPrice * 0.97) : 0;
-
-    return {
-        dealCode,
-        customer: visit.customerName || '-',
-        customerPhone: visit.customerPhone || '-',
-        property: property?.name || 'Visited property',
-        city: getCityFromAddress(property?.address),
-        salesOfficer: visit.officerName || '-',
-        salesOfficerMobile: visit.officerPhone || '-',
-        broker: property?.builder || '-',
-        brokerMobile: '-',
-        status: 'DEAL IN PROCESS',
-        createdOn: todayDisplayDate(),
-        prefLocation: property?.address || '-',
-        propType: property?.type || property?.config || 'Property',
-        address: property?.address || '-',
-        khasra: property?.rera || '-',
-        expectPrice: expectedPrice,
-        negotiationPrice: negotiatedPrice,
-        remainingBalance: negotiatedPrice,
-        payments: [],
-        timeline: [
-            {
-                id: `${dealCode}-visit`,
-                title: 'Converted from property visit',
-                note: visit.userReview || visit.notes || 'Property visit converted to deal.',
-                createdOn: todayDisplayDate()
-            }
-        ],
-        notes: [
-            {
-                id: `${dealCode}-note`,
-                text: visit.userReview || visit.notes || 'Converted from completed property visit.',
-                createdOn: todayDisplayDate()
-            }
-        ],
-        meetings: [
-            {
-                id: `${dealCode}-meeting`,
-                title: 'Property visit completed',
-                date: visit.date || todayDisplayDate(),
-                time: visit.time || '-',
-                mode: 'Site Visit',
-                notes: visit.userReview || visit.notes || ''
-            }
-        ],
-        documents: [],
-        sourceVisitId: visit.id,
-        sourcePropertyName: property?.name || ''
-    };
 };
 
 const mapVisitToForm = (visit) => ({
@@ -267,7 +202,7 @@ const Visits = () => {
     const navigate = useNavigate();
     const dispatch = useDispatch();
     const { alert } = useDialog();
-    const { visits } = useSelector((state) => state.visits);
+    const { visits, loading: visitsLoading } = useSelector((state) => state.visits);
     const { deals } = useSelector((state) => state.deals);
     const [selectedClientKey, setSelectedClientKey] = useState(null);
     const [selectedVisitRowId, setSelectedVisitRowId] = useState(null);
@@ -294,6 +229,7 @@ const Visits = () => {
         let isMounted = true;
 
         const loadVisits = async () => {
+            dispatch(setVisitsLoading(true));
             try {
                 const result = await fetchVisits({ page: 1, pageSize: 100 });
                 if (isMounted) {
@@ -301,6 +237,7 @@ const Visits = () => {
                 }
             } catch (error) {
                 console.error('Failed to load visit management data:', error);
+                if (isMounted) dispatch(setVisitsLoading(false));
             }
         };
 
@@ -515,28 +452,6 @@ const Visits = () => {
             iconClass: 'text-indigo-500',
         },
     ]), [visits]);
-
-    const operationalSlots = useMemo(() => {
-        const todaysVisits = visits.filter((visit) => isTodayVisit(visit.date));
-        const sourceVisits = todaysVisits.length ? todaysVisits : visits.slice(0, 3);
-
-        return sourceVisits.slice(0, 4).map((visit, index) => {
-            const isActive = visit.status === 'In Progress' || index === 1;
-            const isDone = visit.otpStatus === 'Verified' || visit.status === 'Completed';
-            const progress = visit.status === 'Completed' ? 100 : isActive ? 72 : visit.otpStatus === 'Pending' ? 18 : 42;
-
-            return {
-                id: visit.id,
-                customerName: visit.customerName,
-                officerName: visit.officerName,
-                time: visit.time || 'Slot pending',
-                isActive,
-                isDone,
-                progress,
-                muted: visit.status === 'Cancelled',
-            };
-        });
-    }, [visits]);
 
     const openCreateModal = () => {
         setEditingVisitId(null);
@@ -757,37 +672,6 @@ const Visits = () => {
                         ))}
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        {operationalSlots.map((slot) => (
-                            <button
-                                key={slot.id}
-                                type="button"
-                                onClick={() => {
-                                    const slotVisit = visits.find((visit) => visit.id === slot.id);
-                                    if (!slotVisit) return;
-                                    const clientKey = `${normalizeText(slotVisit.customerName)}-${normalizeText(slotVisit.customerPhone)}`;
-                                    setSelectedClientKey(clientKey);
-                                    setSelectedVisitRowId(`${slotVisit.id}-0`);
-                                }}
-                                className={`min-h-[96px] rounded-lg border bg-white p-3 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-                                    slot.isActive ? 'border-[#3024E8] ring-1 ring-[#3024E8]/20' : slot.muted ? 'border-gray-200 opacity-60' : 'border-violet-100'
-                                }`}
-                            >
-                                <div className="flex items-start justify-between gap-2">
-                                    <span className={`rounded px-2 py-1 text-[10px] font-black ${slot.isActive ? 'bg-[#3024E8] text-white' : 'bg-[#3024E8]/10 text-[#3024E8]'}`}>
-                                        {slot.time}
-                                    </span>
-                                    {slot.isDone ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : <Clock className="h-4 w-4 text-slate-400" />}
-                                </div>
-                                <p className="mt-2 text-xs font-black text-slate-950 break-words">{slot.customerName}</p>
-                                <p className="mt-1 text-xs font-bold text-slate-500 break-words">Officer: {slot.officerName}</p>
-                                <div className="mt-2 h-1 rounded-full bg-gray-200">
-                                    <div className={`h-full rounded-full ${slot.isDone ? 'bg-emerald-500' : slot.isActive ? 'bg-[#3024E8]' : 'bg-gray-300'}`} style={{ width: `${slot.progress}%` }} />
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-
                     <Card noPadding className="overflow-hidden border-gray-200 shadow-sm">
                         <div className="space-y-3 border-b border-gray-100 bg-white p-3">
                             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -851,6 +735,15 @@ const Visits = () => {
                             </div>
                         </div>
 
+                        {visitsLoading ? (
+                            <div className="flex min-h-[360px] flex-col items-center justify-center gap-3 p-6 text-center">
+                                <LoaderCircle className="h-8 w-8 animate-spin text-[#3024E8]" />
+                                <div>
+                                    <p className="text-sm font-black text-gray-900">Loading visits</p>
+                                    <p className="mt-1 text-xs font-semibold text-gray-500">Fetching the latest booking data.</p>
+                                </div>
+                            </div>
+                        ) : (
                         <div className="grid gap-3 p-3 xl:grid-cols-[260px_minmax(0,1fr)_360px]">
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between gap-2">
@@ -975,6 +868,8 @@ const Visits = () => {
                                             <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
                                                 <div className="grid gap-2 text-xs font-bold text-gray-700">
                                                     <DetailBlock label="Client" value={selectedVisit.customerName} />
+                                                    <DetailBlock label="Visitors" value={String(selectedVisit.visitorsCount || 1)} />
+                                                    <DetailBlock label="Branch" value={selectedVisit.branchName || 'Unassigned'} />
                                                     <DetailBlock label="Configuration" value={selectedProperty?.config || selectedProperty?.type} />
                                                     <DetailBlock label="Address" value={selectedProperty?.address} wide />
                                                 </div>
@@ -1054,6 +949,7 @@ const Visits = () => {
                                 )}
                             </div>
                         </div>
+                        )}
                     </Card>
                 </div>
             </main>
