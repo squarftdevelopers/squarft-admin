@@ -21,6 +21,7 @@ import {
     updateBuilderKycStatus,
 } from '../../services/panelOverviewService';
 import FieldOfficerKycPanel from '../../components/verification/FieldOfficerKycPanel';
+import SalesOfficerKycPanel from '../../components/verification/SalesOfficerKycPanel';
 
 const documentTypeLabels = {
     profile_photo: 'Profile Photo',
@@ -79,7 +80,10 @@ const DetailField = ({ label, value }) => {
 
 const UserVerification = () => {
     const { prompt } = useDialog();
-    const [activeVerificationTab, setActiveVerificationTab] = useState('consumer');
+    const [activeVerificationTab, setActiveVerificationTab] = useState(() => {
+        const tab = new URLSearchParams(window.location.search).get('tab');
+        return ['consumer', 'builder', 'field_officer', 'sales_officer'].includes(tab) ? tab : 'consumer';
+    });
 
     const [items, setItems] = useState([]);
     const [pagination, setPagination] = useState(null);
@@ -266,14 +270,16 @@ const UserVerification = () => {
                                     ? 'Consumer ID Verification'
                                     : activeVerificationTab === 'builder'
                                         ? 'Project Developer KYC'
-                                        : 'Field Officer KYC'}
+                                        : activeVerificationTab === 'sales_officer' ? 'Sales Officer KYC' : 'Field Officer KYC'}
                             </h2>
                             <p className="text-sm text-gray-500 mt-1">
                                 {activeVerificationTab === 'consumer'
                                     ? 'Review identity documents uploaded by consumer app users awaiting KYC approval.'
                                     : activeVerificationTab === 'builder'
                                         ? 'Review KYC submitted by project developers through the project panel app.'
-                                        : 'Review complete KYC submissions from the field officer app.'}
+                                        : activeVerificationTab === 'sales_officer'
+                                            ? 'Review complete KYC submissions from the sales officer app.'
+                                            : 'Review complete KYC submissions from the field officer app.'}
                             </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-gray-100 p-1">
@@ -281,6 +287,7 @@ const UserVerification = () => {
                                 { id: 'consumer', label: 'Consumer Users' },
                                 { id: 'builder', label: 'Project Developers' },
                                 { id: 'field_officer', label: 'Field Officers' },
+                                { id: 'sales_officer', label: 'Sales Officers' },
                             ].map((tab) => (
                                 <button
                                     key={tab.id}
@@ -606,6 +613,7 @@ const UserVerification = () => {
                     )}
 
                     {activeVerificationTab === 'field_officer' && <FieldOfficerKycPanel />}
+                    {activeVerificationTab === 'sales_officer' && <SalesOfficerKycPanel />}
                 </div>
             </main>
 
