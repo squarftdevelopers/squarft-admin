@@ -228,8 +228,8 @@ const Visits = () => {
     useEffect(() => {
         let isMounted = true;
 
-        const loadVisits = async () => {
-            dispatch(setVisitsLoading(true));
+        const loadVisits = async (background = false) => {
+            if (!background) dispatch(setVisitsLoading(true));
             try {
                 const result = await fetchVisits({ page: 1, pageSize: 100 });
                 if (isMounted) {
@@ -242,8 +242,13 @@ const Visits = () => {
         };
 
         loadVisits();
+        const refresh = () => { if (!document.hidden) loadVisits(true); };
+        const timer = setInterval(refresh, 15000);
+        window.addEventListener("focus", refresh);
 
         return () => {
+            clearInterval(timer);
+            window.removeEventListener("focus", refresh);
             isMounted = false;
         };
     }, [dispatch]);
