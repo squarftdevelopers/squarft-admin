@@ -22,6 +22,8 @@ import {
 } from '../../services/panelOverviewService';
 import FieldOfficerKycPanel from '../../components/verification/FieldOfficerKycPanel';
 import SalesOfficerKycPanel from '../../components/verification/SalesOfficerKycPanel';
+import BrokerKycPanel from '../../components/verification/BrokerKycPanel';
+import ProjectDeveloperKycPanel from '../../components/verification/ProjectDeveloperKycPanel';
 
 const documentTypeLabels = {
     profile_photo: 'Profile Photo',
@@ -82,7 +84,7 @@ const UserVerification = () => {
     const { prompt } = useDialog();
     const [activeVerificationTab, setActiveVerificationTab] = useState(() => {
         const tab = new URLSearchParams(window.location.search).get('tab');
-        return ['consumer', 'builder', 'field_officer', 'sales_officer'].includes(tab) ? tab : 'consumer';
+        return ['builder', 'field_officer', 'sales_officer', 'broker'].includes(tab) ? tab : 'broker';
     });
 
     const [items, setItems] = useState([]);
@@ -266,28 +268,26 @@ const UserVerification = () => {
                     <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
                         <div>
                             <h2 className="text-2xl font-bold text-gray-800">
-                                {activeVerificationTab === 'consumer'
-                                    ? 'Consumer ID Verification'
-                                    : activeVerificationTab === 'builder'
+                                {activeVerificationTab === 'builder'
                                         ? 'Project Developer KYC'
-                                        : activeVerificationTab === 'sales_officer' ? 'Sales Officer KYC' : 'Field Officer KYC'}
+                                        : activeVerificationTab === 'sales_officer' ? 'Sales Officer KYC' : activeVerificationTab === 'broker' ? 'Broker KYC' : 'Field Officer KYC'}
                             </h2>
                             <p className="text-sm text-gray-500 mt-1">
-                                {activeVerificationTab === 'consumer'
-                                    ? 'Review identity documents uploaded by consumer app users awaiting KYC approval.'
-                                    : activeVerificationTab === 'builder'
+                                {activeVerificationTab === 'builder'
                                         ? 'Review KYC submitted by project developers through the project panel app.'
                                         : activeVerificationTab === 'sales_officer'
                                             ? 'Review complete KYC submissions from the sales officer app.'
-                                            : 'Review complete KYC submissions from the field officer app.'}
+                                            : activeVerificationTab === 'broker'
+                                                ? 'Review complete KYC submissions from the broker app.'
+                                                : 'Review complete KYC submissions from the field officer app.'}
                             </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-gray-100 p-1">
                             {[
-                                { id: 'consumer', label: 'Consumer Users' },
                                 { id: 'builder', label: 'Project Developers' },
                                 { id: 'field_officer', label: 'Field Officers' },
                                 { id: 'sales_officer', label: 'Sales Officers' },
+                                { id: 'broker', label: 'Brokers' },
                             ].map((tab) => (
                                 <button
                                     key={tab.id}
@@ -422,7 +422,8 @@ const UserVerification = () => {
                     </>
                     )}
 
-                    {activeVerificationTab === 'builder' && (
+                    {activeVerificationTab === 'builder' && <ProjectDeveloperKycPanel />}
+                    {false && activeVerificationTab === 'builder' && (
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="lg:col-span-1 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                                 <div className="flex items-center justify-between border-b border-gray-100 pb-3">
@@ -614,6 +615,7 @@ const UserVerification = () => {
 
                     {activeVerificationTab === 'field_officer' && <FieldOfficerKycPanel />}
                     {activeVerificationTab === 'sales_officer' && <SalesOfficerKycPanel />}
+                    {activeVerificationTab === 'broker' && <BrokerKycPanel />}
                 </div>
             </main>
 
