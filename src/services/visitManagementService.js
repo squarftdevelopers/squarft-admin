@@ -130,6 +130,8 @@ export const normalizeVisit = (visit = {}) => {
     purpose: visit.purpose || 'BUY',
     userReview: visit.userReview || '',
     userRating: visit.userRating,
+    cancellationReason: visit.cancellation_reason || "",
+    completedAt: visit.completed_at || null,
     officerNote: visit.officer_note || '',
     leadTemperature: visit.lead_temperature || '',
     uploadedPhotos: visit.uploadedPhotos || [],

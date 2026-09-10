@@ -334,7 +334,7 @@ const ClientProfileView = ({
     const openEditRequirement = () => {
         const latest = (client.customerRequirements || [])[0];
         setEditRequirementForm(latest ? {
-            status: latest.requirement_type || 'Buy',
+            status: latest.requirement_type || latest.type?.toLowerCase() || 'buy',
             propertyCategory: latest.property_category || 'Residential',
             propertyType: latest.property_type || 'Plot',
             configuration: latest.configuration || 'N/A',
@@ -584,6 +584,19 @@ const ClientProfileView = ({
 
     return (
         <div className="max-w-[1600px] mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <section className="rounded-xl border border-slate-200 bg-white p-5">
+                <h2 className="text-lg font-bold mb-4">Customer Requirements</h2>
+                {!client.customerRequirements?.length ? <p className="text-sm text-slate-500">No requirements recorded for this customer.</p> : client.customerRequirements.map(requirement => (
+                    <article key={requirement.id} className="border-t first:border-t-0 py-4 space-y-2 text-sm">
+                        <div className="font-semibold">{[requirement.type, requirement.property_category, requirement.property_type].filter(Boolean).join(' · ')}</div>
+                        <div><span className="text-slate-500">Budget: </span>{requirement.budget_range}</div>
+                        <div><span className="text-slate-500">Preferred locations: </span>{requirement.location}</div>
+                        <div>{requirement.customer_name} · {requirement.contact_number}</div>
+                        {requirement.notes && <p className="whitespace-pre-wrap text-slate-600">{requirement.notes}</p>}
+                        <div className="text-xs text-slate-500">{requirement.created_at ? new Date(requirement.created_at).toLocaleString('en-IN', {timeZone:'Asia/Kolkata'}) : ''} · Contact {requirement.contact_verified ? 'verified' : 'not verified'}</div>
+                    </article>
+                ))}
+            </section>
             <Card noPadding className="bg-linear-to-r from-white to-[#6F4BFF]/5 relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 flex items-center gap-2">
                     <button onClick={openEditRequirement} className="px-3 py-1.5 rounded-lg border border-[#6F4BFF]/30 bg-[#6F4BFF]/5 text-xs font-bold text-[#6F4BFF] hover:bg-[#6F4BFF]/10 transition-all flex items-center gap-1.5">

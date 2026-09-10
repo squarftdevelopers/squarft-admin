@@ -1,3 +1,4 @@
+import SiteVisitLeads from '../../components/leads/SiteVisitLeads';
 import { useEffect, useMemo, useState } from 'react';
 import {
     Bot,
@@ -446,6 +447,8 @@ const Leads = () => {
                 </div>
                 {pipelineView === 'project' ? <div className="mx-auto max-w-[1600px]"><ProjectLeadPipeline /></div> : (
                 <div className="mx-auto max-w-[1600px] space-y-5">
+                    <SiteVisitLeads />
+                    <h2 className="text-lg font-bold text-slate-900">Other Customer Leads</h2>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                         {metrics.map((metric) => (
                             <MetricCard key={metric.label} {...metric} />
