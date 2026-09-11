@@ -14,3 +14,11 @@ export const fetchProjectLeads = async (params = {}) => {
   const data = response?.data ?? response;
   return { leads: data?.leads || [], count: data?.count || 0 };
 };
+
+export const updateProjectLeadStage = async (leadId, payload) => {
+  const response = await apiRequest(`/api/admin/builder-leads/${leadId}/stage`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  return response?.data ?? response;
+};
