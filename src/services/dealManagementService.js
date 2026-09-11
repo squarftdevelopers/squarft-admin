@@ -131,6 +131,8 @@ export const normalizeDeal = (deal = {}) => {
     paidAmount,
     remainingBalance: asNumber(deal.remaining_balance ?? deal.remainingBalance ?? (negotiationPrice - paidAmount)),
     projectId: deal.project_id || deal.projectId,
+    dealStages: deal.deal_stages || deal.dealStages || [],
+    currentStageIndex: Number(deal.current_stage_index || 0),
     propertyId: deal.property_id || deal.propertyId,
     propertyMedia: Array.isArray(deal.property_media || deal.propertyMedia)
       ? (deal.property_media || deal.propertyMedia).map((media) => ({

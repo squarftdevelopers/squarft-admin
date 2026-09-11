@@ -888,7 +888,7 @@ const Deals = () => {
 const DealDetailView = ({ deal, onBack }) => {
     const dispatch = useDispatch();
     const { alert } = useDialog();
-    const [activeTab, setActiveTab] = useState('Payment Schedule');
+    const [activeTab, setActiveTab] = useState('Deal Created');
     const [isProjectDetailsOpen, setIsProjectDetailsOpen] = useState(false);
     const [meetingForm, setMeetingForm] = useState({ date: '', time: '', remarks: '' });
     const [negotiationForm, setNegotiationForm] = useState({ expectedAmount: '', customerOffer: '', finalOffer: '', finalDeal: '' });
@@ -898,7 +898,7 @@ const DealDetailView = ({ deal, onBack }) => {
     const [adminDocumentForm, setAdminDocumentForm] = useState({ name: '', category: 'AGREEMENT DOCUMENTS', file: null });
     const [editingPaymentId, setEditingPaymentId] = useState(null);
     const [documentTab, setDocumentTab] = useState('user');
-    const tabs = ['Meeting', 'Negotiation', 'Notes', 'Timeline', 'Collect Token Money', 'Payment Schedule', 'Payment History', 'Document'];
+    const tabs = ['Deal Created', 'Meetings & Notes', 'Token', 'Payment Schedule', 'Payment History', 'Documents', 'Timeline'];
     const propertyNumber = getDealPropertyNumber(deal);
     const projectDetails = getDealProjectDetails(deal);
     const customerDetails = getDealCustomerDetails(deal, propertyNumber);
@@ -1387,12 +1387,12 @@ const DealDetailView = ({ deal, onBack }) => {
                                         </div>
                                         <div className="flex justify-between items-center">
                                             <span className="text-gray-400 font-bold uppercase text-[10px]">Commission Rate:</span>
-                                            <span className="font-black text-indigo-600">2.0 %</span>
+                                            <span className="font-black text-indigo-600">0.8 %</span>
                                         </div>
                                         <div className="flex justify-between items-center pt-3 border-t border-gray-50">
                                             <span className="text-gray-400 font-bold uppercase text-[10px]">Payout Amount:</span>
                                             <span className="font-black text-emerald-600 text-lg">
-                                                ₹ {((deal.negotiationPrice || deal.expectPrice) * 0.02).toLocaleString('en-IN')}
+                                                ₹ {((deal.negotiationPrice || deal.expectPrice) * 0.008).toLocaleString('en-IN')}
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center">
@@ -1421,7 +1421,7 @@ const DealDetailView = ({ deal, onBack }) => {
                         </div>
 
                         <div className="p-8">
-                            {activeTab === 'Meeting' && (
+                            {activeTab === 'Meetings & Notes' && (
                                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     <h3 className="text-lg font-black text-gray-800 flex items-center gap-2.5 mb-8 uppercase tracking-tight">
                                         <Calendar className="w-5 h-5 text-[#6F4BFF]" /> Meeting Schedule
@@ -1466,7 +1466,7 @@ const DealDetailView = ({ deal, onBack }) => {
                                 </div>
                             )}
 
-                            {activeTab === 'Negotiation' && (
+                            {activeTab === 'Deal Created' && (
                                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     <h3 className="text-lg font-black text-gray-800 flex items-center gap-2.5 mb-8 uppercase tracking-tight">
                                         <IndianRupee className="w-5 h-5 text-[#6F4BFF]" /> Negotiation Manager
@@ -1504,7 +1504,7 @@ const DealDetailView = ({ deal, onBack }) => {
                                 </div>
                             )}
 
-                            {activeTab === 'Notes' && (
+                            {activeTab === 'Meetings & Notes' && (
                                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     <h3 className="text-lg font-black text-gray-800 flex items-center gap-2.5 mb-8 uppercase tracking-tight">
                                         <MessageSquare className="w-5 h-5 text-[#6F4BFF]" /> Deal Notes
@@ -1527,7 +1527,7 @@ const DealDetailView = ({ deal, onBack }) => {
                                 </div>
                             )}
 
-                            {activeTab === 'Collect Token Money' && (
+                            {activeTab === 'Token' && (
                                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                                         <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
@@ -1683,7 +1683,7 @@ const DealDetailView = ({ deal, onBack }) => {
                                 </div>
                             )}
 
-                            {activeTab === 'Document' && (
+                            {activeTab === 'Documents' && (
                                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                                         <h3 className="text-base font-black text-gray-800 flex items-center gap-2 uppercase tracking-tight">
@@ -1844,13 +1844,27 @@ const DealDetailView = ({ deal, onBack }) => {
                             )}
 
                             {activeTab === 'Timeline' && (
-                                <div className="h-64 flex flex-col items-center justify-center border-2 border-dashed border-gray-100 rounded-3xl bg-gray-50/50 animate-in fade-in duration-300">
-                                    <div className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100 mb-4">
-                                        <Settings className="w-8 h-8 text-gray-300 animate-spin-slow" />
+                                <div className="animate-in fade-in duration-300">
+                                    <div className="mb-8 flex items-center justify-between">
+                                        <div>
+                                            <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Deal Timeline</h3>
+                                            <p className="mt-1 text-xs font-bold text-gray-400">Stages update as meetings, payments, and documents are completed.</p>
+                                        </div>
+                                        <span className="rounded-full bg-[#6F4BFF]/10 px-3 py-1 text-xs font-black text-[#6F4BFF]">Stage {(deal.currentStageIndex || 0) + 1} of 7</span>
                                     </div>
-                                    <p className="text-gray-400 font-black text-[11px] uppercase tracking-widest">
-                                        <span className="text-[#6F4BFF]">{activeTab}</span> is coming soon.
-                                    </p>
+                                    <div className="relative space-y-4 pl-8">
+                                        <div className="absolute bottom-4 left-[11px] top-4 w-0.5 bg-gray-200" />
+                                        {['Deal Created', 'Meetings & Notes', 'Token', 'Payment Schedule', 'Payment History', 'Documents', 'Timeline'].map((stage, index) => {
+                                            const complete = index < (deal.currentStageIndex || 0);
+                                            const current = index === (deal.currentStageIndex || 0);
+                                            return (
+                                                <div key={stage} className="relative flex items-center gap-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+                                                    <span className={`absolute -left-[29px] z-10 h-5 w-5 rounded-full border-4 border-white ${complete || current ? 'bg-[#6F4BFF]' : 'bg-gray-300'}`} />
+                                                    <div className="flex-1"><p className={`text-sm font-black ${complete || current ? 'text-gray-900' : 'text-gray-400'}`}>{stage}</p><p className="mt-1 text-xs font-semibold text-gray-400">{complete ? 'Completed' : current ? 'In progress' : 'Pending'}</p></div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             )}
                         </div>
