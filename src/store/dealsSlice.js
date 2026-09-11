@@ -1,8 +1,7 @@
 import { createSlice } from '@reduxjs/toolkit';
-import { mockDeals } from '../data/mockData';
 
 const initialState = {
-  deals: mockDeals,
+  deals: [],
   selectedDeal: null,
   loading: false,
   error: null,

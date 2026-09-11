@@ -1,0 +1,10 @@
+import { useEffect, useState } from 'react';
+import { apiRequest } from '../config/api';
+import { useDialog } from './ui/Dialog';
+export default function BrokerWithdrawalPayments(){
+ const [rows,setRows]=useState([]),[error,setError]=useState(''),[busy,setBusy]=useState(false);const {prompt}=useDialog();
+ const load=async()=>{try{setRows((await apiRequest('/api/broker-sales/withdrawals')).data||[]);}catch(e){setError(e.message);}};
+ useEffect(()=>{load();},[]);
+ const review=async(row,status)=>{const value=await prompt(status==='paid'?'Enter the bank transaction / UTR reference after transferring the funds.':'Enter a rejection reason.',{title:status==='paid'?'Confirm payment done':'Reject withdrawal'});if(!value?.trim())return;setBusy(true);try{await apiRequest(`/api/broker-sales/withdrawals/${row.id}/review`,{method:'POST',body:JSON.stringify({status,transactionId:value,rejectionReason:value})});await load();}catch(e){setError(e.message);}finally{setBusy(false);}};
+ return <section className="m-6 rounded-xl border bg-white p-5"><div className="flex justify-between"><h2 className="font-bold text-xl">Withdrawal payments</h2><button onClick={load}>Refresh</button></div>{error&&<p className="text-red-600">{error}</p>}<div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead><tr>{['Broker','Amount','Bank account','Status','Payment reference','Actions'].map(h=><th className="p-3" key={h}>{h}</th>)}</tr></thead><tbody>{rows.map(r=><tr className="border-t" key={r.id}><td className="p-3">{r.broker_name}</td><td className="p-3">₹{Number(r.amount).toLocaleString('en-IN')}</td><td className="p-3">{r.bank_name}<br/>{r.account_number}<br/>{r.ifsc_code}</td><td className="p-3">{r.status==='approved'?'Paid':r.status}</td><td>{r.transaction_id||r.rejection_reason||'—'}</td><td>{r.status==='pending'&&<div className="flex gap-3"><button disabled={busy} className="text-green-700" onClick={()=>review(r,'paid')}>Payment done</button><button disabled={busy} className="text-red-600" onClick={()=>review(r,'rejected')}>Reject</button></div>}</td></tr>)}</tbody></table></div></section>;
+}

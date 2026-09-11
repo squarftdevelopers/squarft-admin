@@ -4,7 +4,7 @@ import {
     Eye, Trash2, ArrowRight, PhoneCall, Check, X,
     FileText, MoreVertical, Building2, MapPin, CreditCard,
     History, MessageSquare, Calendar, User, ClipboardList,
-    Settings, Search, IndianRupee, Briefcase, Clock,
+    Settings, Search, IndianRupee, Briefcase, Clock, Loader2,
     Edit2, CheckCircle2, Plus
 } from 'lucide-react';
 import { setDeals, setSelectedDeal, deleteDeal, updateDealStatus, updateDealDetails } from '../../store/dealsSlice';
@@ -16,7 +16,6 @@ import Table from '../../components/ui/Table';
 import Modal from '../../components/ui/Modal';
 import { useDialog } from '../../components/ui/Dialog';
 import { mockProjects } from '../../data/mockData';
-import samplePropertyImage from '../../assets/login-bg.png';
 import {
     addDealMeeting,
     addDealNote,
@@ -220,43 +219,25 @@ const getDealDocumentsForAdmin = (deal) => {
     }));
 };
 
-const DealPropertyDetailsModal = ({ deal, projectDetails, propertyNumber, isOpen, onClose }) => (
-    <Modal isOpen={isOpen} onClose={onClose} title={`${projectDetails.name} - Full Property Details`} size="xl">
+const DealPropertyDetailsModal = ({ deal, projectDetails, propertyNumber, isOpen, onClose }) => {
+    const propertyImages = deal.propertyMedia || [];
+
+    return <Modal isOpen={isOpen} onClose={onClose} title={`${projectDetails.name} - Full Property Details`} size="xl">
         <div className="space-y-6">
-            {/* Property Image Gallery */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="md:col-span-2 relative h-52 rounded-2xl overflow-hidden border border-[#E1DDF0]">
-                    <img 
-                        src={samplePropertyImage} 
-                        alt={projectDetails.name} 
-                        className="w-full h-full object-cover" 
-                    />
-                    <div className="absolute bottom-3 left-3 rounded-lg bg-black/60 backdrop-blur-xs px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white">
-                        Referred Property Hero View
+            <div className="rounded-2xl border border-[#E1DDF0] bg-gray-50 p-3">
+                {propertyImages.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {propertyImages.map((image) => (
+                            <div key={image.id || image.url} className="relative h-52 overflow-hidden rounded-xl border border-[#E1DDF0] bg-white">
+                                <img src={image.url} alt={image.label} className="h-full w-full object-cover" />
+                            </div>
+                        ))}
                     </div>
-                </div>
-                <div className="grid grid-rows-2 gap-3">
-                    <div className="relative h-[100px] rounded-xl overflow-hidden border border-[#E1DDF0]">
-                        <img 
-                            src={samplePropertyImage} 
-                            alt="Interior View" 
-                            className="w-full h-full object-cover brightness-95" 
-                        />
-                        <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[8px] font-bold text-white">
-                            Layout Plan
-                        </div>
+                ) : (
+                    <div className="flex min-h-40 items-center justify-center text-sm font-semibold text-gray-500">
+                        No property images uploaded.
                     </div>
-                    <div className="relative h-[100px] rounded-xl overflow-hidden border border-[#E1DDF0]">
-                        <img 
-                            src={samplePropertyImage} 
-                            alt="Elevation View" 
-                            className="w-full h-full object-cover brightness-90" 
-                        />
-                        <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[8px] font-bold text-white">
-                            Elevation View
-                        </div>
-                    </div>
-                </div>
+                )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-6">
@@ -377,15 +358,20 @@ const DealPropertyDetailsModal = ({ deal, projectDetails, propertyNumber, isOpen
                 </div>
             </div>
         </div>
-    </Modal>
-);
+    </Modal>;
+};
 
 const Deals = () => {
     const dispatch = useDispatch();
     const { confirm } = useDialog();
     const { deals, selectedDeal } = useSelector((state) => state.deals);
+    useEffect(() => {
+        const id = new URLSearchParams(window.location.search).get('dealId');
+        if (id) fetchDealById(id).then(detail => dispatch(setSelectedDeal(detail))).catch(console.error);
+    }, [dispatch]);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeDealFilter, setActiveDealFilter] = useState('all');
+    const [loadingDeals, setLoadingDeals] = useState(true);
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [creatingDeal, setCreatingDeal] = useState(false);
@@ -415,6 +401,8 @@ const Deals = () => {
                 }
             } catch (error) {
                 console.error('Failed to load deal management data:', error);
+            } finally {
+                if (isMounted) setLoadingDeals(false);
             }
         };
 
@@ -637,11 +625,16 @@ const Deals = () => {
                     </div>
 
                     <Card noPadding className="overflow-hidden border-gray-100 shadow-xl shadow-gray-200/50">
-                        <Table
-                            headers={['DEAL CODE', 'CUSTOMER', 'PROPERTY', 'CITY', 'SALES OFFICER', 'BROKER', 'STATUS', 'CREATED ON', 'ACTION']}
-                            data={filteredDeals}
-                            renderRow={(deal, i) => (
-                                <tr key={i} className="hover:bg-gray-50/80 transition-all border-b border-gray-100 last:border-0">
+                        {loadingDeals ? (
+                            <div className="flex min-h-64 items-center justify-center">
+                                <Loader2 className="h-8 w-8 animate-spin text-[#6F4BFF]" aria-label="Loading deals" />
+                            </div>
+                        ) : (
+                            <Table
+                                headers={['DEAL CODE', 'CUSTOMER', 'PROPERTY', 'CITY', 'SALES OFFICER', 'BROKER', 'STATUS', 'CREATED ON', 'ACTION']}
+                                data={filteredDeals}
+                                renderRow={(deal, i) => (
+                                    <tr key={i} className="hover:bg-gray-50/80 transition-all border-b border-gray-100 last:border-0">
                                     <td className="px-6 py-5 font-black text-gray-700">{deal.dealCode}</td>
                                     <td className="px-6 py-5">
                                         <div className="font-black text-gray-900">{deal.customer}</div>
@@ -679,9 +672,10 @@ const Deals = () => {
                                             </button>
                                         </div>
                                     </td>
-                                </tr>
-                            )}
-                        />
+                                    </tr>
+                                )}
+                            />
+                        )}
                     </Card>
                 </div>
             </main>
@@ -1214,6 +1208,7 @@ const DealDetailView = ({ deal, onBack }) => {
                 const apiDocument = await uploadDealDocument(dealId, {
                     file: uploadedFile,
                     type: adminDocumentForm.category,
+                    name: uploadedName,
                 });
                 uploadedDocument = {
                     ...uploadedDocument,
@@ -1277,6 +1272,7 @@ const DealDetailView = ({ deal, onBack }) => {
                                 </div>
                             </div>
                             <div className="flex gap-3 w-full xl:w-auto">
+                                <Button onClick={() => handleDealStatusChange('PAYMENT SCHEDULE')} icon={CreditCard} className="flex-1 xl:flex-none bg-[#6F4BFF] hover:bg-[#5936eb] text-white shadow-lg shadow-[#6F4BFF]/20 font-black uppercase tracking-widest text-xs h-11">Payment Schedule</Button>
                                 <Button onClick={() => handleDealStatusChange('FINALIZED')} variant="success" icon={Check} className="flex-1 xl:flex-none bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 font-black uppercase tracking-widest text-xs h-11">Finalize Deal</Button>
                                 <Button onClick={() => handleDealStatusChange('LOSTED')} variant="danger" icon={X} className="flex-1 xl:flex-none bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20 font-black uppercase tracking-widest text-xs h-11">Mark as Lost</Button>
                             </div>

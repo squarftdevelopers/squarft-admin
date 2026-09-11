@@ -13,6 +13,7 @@ import {
     UserRound,
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
+import BrokerWithdrawalPayments from '../../components/BrokerWithdrawalPayments';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../../components/ui/Modal';
 import samplePropertyImage from '../../assets/login-bg.png';
@@ -267,6 +268,8 @@ const BrokerCommission = () => {
     return (
         <div className="flex h-full flex-1 flex-col bg-[#F5F6FA] text-[#15121F]">
             <Header title="Broker" />
+
+            <BrokerWithdrawalPayments />
 
             <main className="flex-1 overflow-y-auto overflow-x-hidden p-4">
                 <div className="mx-auto max-w-[1600px] min-w-0 space-y-4">
@@ -836,10 +839,10 @@ const BrokerPropertyDetailsModal = ({ property, selectedBroker, isOpen, onClose 
                 {/* Property Image Gallery */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="md:col-span-2 relative h-52 rounded-2xl overflow-hidden border border-[#E1DDF0]">
-                        <img 
-                            src={samplePropertyImage} 
-                            alt={projectDetails.name} 
-                            className="w-full h-full object-cover" 
+                        <img
+                            src={samplePropertyImage}
+                            alt={projectDetails.name}
+                            className="w-full h-full object-cover"
                         />
                         <div className="absolute bottom-3 left-3 rounded-lg bg-black/60 backdrop-blur-xs px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white">
                             Referred Property Hero View
@@ -847,20 +850,20 @@ const BrokerPropertyDetailsModal = ({ property, selectedBroker, isOpen, onClose 
                     </div>
                     <div className="grid grid-rows-2 gap-3">
                         <div className="relative h-[100px] rounded-xl overflow-hidden border border-[#E1DDF0]">
-                            <img 
-                                src={samplePropertyImage} 
-                                alt="Interior View" 
-                                className="w-full h-full object-cover brightness-95" 
+                            <img
+                                src={samplePropertyImage}
+                                alt="Interior View"
+                                className="w-full h-full object-cover brightness-95"
                             />
                             <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[8px] font-bold text-white">
                                 Layout Plan
                             </div>
                         </div>
                         <div className="relative h-[100px] rounded-xl overflow-hidden border border-[#E1DDF0]">
-                            <img 
-                                src={samplePropertyImage} 
-                                alt="Elevation View" 
-                                className="w-full h-full object-cover brightness-90" 
+                            <img
+                                src={samplePropertyImage}
+                                alt="Elevation View"
+                                className="w-full h-full object-cover brightness-90"
                             />
                             <div className="absolute bottom-2 left-2 rounded bg-black/60 px-2 py-0.5 text-[8px] font-bold text-white">
                                 Elevation View

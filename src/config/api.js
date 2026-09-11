@@ -56,12 +56,18 @@ const handleSessionExpiry = () => {
 export const apiRequest = async (endpoint, options = {}) => {
   const { skipAuth = false, ...fetchOptions } = options;
   const url = `${API_BASE_URL}${endpoint}`;
+  const isMultipart = typeof FormData !== 'undefined' && fetchOptions.body instanceof FormData;
 
   try {
     const response = await fetch(url, {
       ...fetchOptions,
       headers: {
-        ...getAuthHeaders({ skipAuth }),
+        ...(isMultipart
+          ? (() => {
+              const { 'Content-Type': _contentType, ...headers } = getAuthHeaders({ skipAuth });
+              return headers;
+            })()
+          : getAuthHeaders({ skipAuth })),
         ...fetchOptions.headers,
       },
     });

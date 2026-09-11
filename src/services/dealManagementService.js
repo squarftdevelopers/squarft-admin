@@ -131,6 +131,14 @@ export const normalizeDeal = (deal = {}) => {
     paidAmount,
     remainingBalance: asNumber(deal.remaining_balance ?? deal.remainingBalance ?? (negotiationPrice - paidAmount)),
     projectId: deal.project_id || deal.projectId,
+    propertyId: deal.property_id || deal.propertyId,
+    propertyMedia: Array.isArray(deal.property_media || deal.propertyMedia)
+      ? (deal.property_media || deal.propertyMedia).map((media) => ({
+        id: media.id,
+        url: media.url || media.file_url || media.fileUrl || '',
+        label: media.label || 'Property image',
+      })).filter((media) => media.url)
+      : [],
     unitId: deal.unit_id || deal.unitId,
     visitId: deal.visit_id || deal.visitId || null,
     payments: Array.isArray(deal.payments) ? deal.payments.map(normalizeDealPayment) : deal.payments,
@@ -276,14 +284,16 @@ export const markPaymentReceived = async (dealId, paymentId, payload = {}) =>
     }),
   }));
 
-export const uploadDealDocument = async (dealId, { file, type }) =>
-  unwrapData(await apiRequest(`${DEALS_BASE}/${dealId}/documents`, {
+export const uploadDealDocument = async (dealId, { file, type, name }) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('type', type);
+  if (name) formData.append('name', name);
+  return unwrapData(await apiRequest(`${DEALS_BASE}/${dealId}/documents`, {
     method: 'POST',
-    body: JSON.stringify({
-      file: { originalname: file?.name || 'document.pdf' },
-      type,
-    }),
+    body: formData,
   }));
+};
 
 export const deleteDealDocument = async (dealId, documentId) =>
   unwrapData(await apiRequest(`${DEALS_BASE}/${dealId}/documents/${documentId}`, {

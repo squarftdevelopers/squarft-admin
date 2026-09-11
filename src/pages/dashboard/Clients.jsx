@@ -41,6 +41,7 @@ import {
     convertClientToDeal,
     deleteClientMeeting,
     fetchAvailableOfficers,
+    fetchClientAssignedProperties,
     fetchClientHubClients,
     fetchClientProfileBundle,
     fetchTodayVisits,
@@ -545,29 +546,60 @@ const ClientProfileView = ({
     const pendingDealProject = pendingDealItem ? getProject(pendingDealItem.projectId) : null;
 
     const [pendingVisitDeal, setPendingVisitDeal] = useState(null);
+    const [dealAmount, setDealAmount] = useState('');
+    const [dealSubmitting, setDealSubmitting] = useState(false);
+    const [dealError, setDealError] = useState('');
+
+    const closeDealDialog = () => {
+        setPendingDealIndex(null);
+        setPendingVisitDeal(null);
+        setDealAmount('');
+        setDealError('');
+    };
 
     const handleConfirmContinueToDeal = async () => {
         if (pendingDealIndex === null || !pendingDealItem || !pendingDealProject) return;
 
+        const amount = Number(dealAmount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            setDealError('Enter a valid confirmed deal amount.');
+            return;
+        }
+        setDealSubmitting(true);
+        setDealError('');
         try {
             await onContinueToDeal({
                 pipelineItem: pendingDealItem,
                 project: pendingDealProject,
+                dealValue: amount,
             });
-            setPendingDealIndex(null);
+            closeDealDialog();
         } catch (error) {
             console.error('Failed to continue assigned property to deal:', error);
+            setDealError(error.message || 'Unable to start the deal.');
+        } finally {
+            setDealSubmitting(false);
         }
     };
 
     const handleConfirmVisitDeal = async () => {
         if (!pendingVisitDeal) return;
 
+        const amount = Number(dealAmount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            setDealError('Enter a valid confirmed deal amount.');
+            return;
+        }
+        setDealSubmitting(true);
+        setDealError('');
         try {
-            await onContinueToDeal({ visit: pendingVisitDeal });
-            setPendingVisitDeal(null);
+            await onContinueToDeal({ visit: pendingVisitDeal, dealValue: amount });
+            closeDealDialog();
         } catch (error) {
             console.error('Failed to continue visit to deal:', error);
+            setDealError(error.message || 'Unable to start the deal.');
+        } finally {
+            setDealSubmitting(false);
         }
     };
 
@@ -867,6 +899,7 @@ const ClientProfileView = ({
                                             const project = getProject(pipelineItem.projectId);
                                             if (!project) return null;
                                             const continuedToDeal = Boolean(pipelineItem.continuedToDeal || pipelineItem.deal);
+                                            const completedVisit = String(pipelineItem.siteVisit?.status || '').toLowerCase() === 'completed';
                                             const isExpanded = expandedProjectId === project.id;
                                             return (
                                                 <div key={`${pipelineItem.projectId}-assigned-${index}`} className="snap-start shrink-0 w-80">
@@ -925,11 +958,11 @@ const ClientProfileView = ({
                                                                 className="flex-1 rounded-lg border border-[#6F4BFF] px-2.5 py-1.5 text-xs font-bold text-[#6F4BFF] bg-white transition hover:bg-[#6F4BFF]/5">
                                                                 Book Visit
                                                             </button>
-                                                            <button type="button" disabled={continuedToDeal}
+                                                            {completedVisit && <button type="button" disabled={continuedToDeal}
                                                                 onClick={(e) => { e.stopPropagation(); setPendingDealIndex(index); }}
                                                                 className="flex-1 rounded-lg bg-[#6F4BFF] px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-[#5936eb] disabled:bg-emerald-100 disabled:text-emerald-700">
-                                                                {continuedToDeal ? 'Deal Closed' : 'Continue to Deal'}
-                                                            </button>
+                                                                {continuedToDeal ? 'Deal Started' : 'Start Deal'}
+                                                            </button>}
                                                         </div>
                                                     </Card>
                                                 </div>
@@ -1331,7 +1364,7 @@ const ClientProfileView = ({
                                                         {selectedSiteVisit.property.name} - {selectedSiteVisit.property.config?.split(' ')[0] || selectedSiteVisit.property.type}
                                                     </h4>
                                                     <span className={`rounded-md px-2.5 py-1 text-xs font-black uppercase ${getVisitBadgeClass(selectedSiteVisit.status)}`}>
-                                                        {selectedSiteVisit.status === 'Completed' ? 'HOT' : selectedSiteVisit.status}
+                                                        {String(selectedSiteVisit.status).toLowerCase() === 'completed' ? 'HOT' : selectedSiteVisit.status}
                                                     </span>
                                                 </div>
                                                 <p className="mt-1 text-sm font-medium text-gray-600">{selectedSiteVisit.property.address}</p>
@@ -1346,7 +1379,7 @@ const ClientProfileView = ({
                                         </div>
 
                                         {/* Completed-only: Arrival time + Review (only rendered when the backend actually provides this data) */}
-                                        {selectedSiteVisit.status === 'Completed' && (
+                                        {String(selectedSiteVisit.status).toLowerCase() === 'completed' && (
                                             <>
                                                 {selectedSiteVisit.arrivalTime && (
                                                     <div className="mt-4 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
@@ -1409,13 +1442,13 @@ const ClientProfileView = ({
                                             <p className="mt-1 text-sm font-semibold text-gray-700">{selectedSiteVisit.notes}</p>
                                         </div>
 
-                                        {selectedSiteVisit.status === 'Completed' && (
+                                        {String(selectedSiteVisit.status).toLowerCase() === 'completed' && (
                                             <button
                                                 type="button"
                                                 onClick={() => setPendingVisitDeal(selectedSiteVisit)}
                                                 className="mt-4 w-full rounded-lg bg-[#6F4BFF] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#5936eb]"
                                             >
-                                                Continue to Deal
+                                                Start Deal
                                             </button>
                                         )}
                                     </aside>
@@ -1722,34 +1755,40 @@ const ClientProfileView = ({
                 )}
             </Modal>
 
-            <Modal isOpen={pendingDealIndex !== null} onClose={() => setPendingDealIndex(null)} title="Continue to Deal?">
+            <Modal isOpen={pendingDealIndex !== null} onClose={closeDealDialog} title="Start Deal">
                 <div className="space-y-5">
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                         <p className="text-sm font-bold text-gray-900">{pendingDealProject?.name}</p>
                         <p className="text-xs font-medium text-gray-500 mt-1">{pendingDealProject?.location}</p>
                     </div>
-                    <p className="text-sm font-medium text-gray-600">
-                        Are you sure you want to continue this assigned property to deal?
-                    </p>
+                    <div>
+                        <label className="block text-xs font-black uppercase tracking-widest text-gray-500">Confirmed deal amount (₹)</label>
+                        <input autoFocus type="number" min="1" value={dealAmount} onChange={(event) => setDealAmount(event.target.value)} placeholder="Enter agreed amount" className="mt-2 w-full rounded-xl border border-gray-300 bg-white p-3 text-sm font-bold outline-none focus:border-[#6F4BFF] focus:ring-2 focus:ring-[#6F4BFF]/20" />
+                    </div>
+                    {dealError ? <p className="text-sm font-semibold text-rose-600">{dealError}</p> : null}
+                    <p className="text-xs font-medium text-gray-500">A payment schedule will be created with a Booking Amount milestone. You can edit the complete schedule in Deal Management.</p>
                     <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                        <Button variant="secondary" onClick={() => setPendingDealIndex(null)}>No</Button>
-                        <Button onClick={handleConfirmContinueToDeal}>Yes, Continue</Button>
+                        <Button variant="secondary" disabled={dealSubmitting} onClick={closeDealDialog}>Cancel</Button>
+                        <Button disabled={dealSubmitting} onClick={handleConfirmContinueToDeal}>{dealSubmitting ? 'Starting…' : 'Start Deal'}</Button>
                     </div>
                 </div>
             </Modal>
 
-            <Modal isOpen={pendingVisitDeal !== null} onClose={() => setPendingVisitDeal(null)} title="Continue to Deal?">
+            <Modal isOpen={pendingVisitDeal !== null} onClose={closeDealDialog} title="Start Deal">
                 <div className="space-y-5">
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                         <p className="text-sm font-bold text-gray-900">{pendingVisitDeal?.property?.name}</p>
                         <p className="text-xs font-medium text-gray-500 mt-1">{pendingVisitDeal?.property?.address}</p>
                     </div>
-                    <p className="text-sm font-medium text-gray-600">
-                        Are you sure you want to continue this site visit to deal?
-                    </p>
+                    <div>
+                        <label className="block text-xs font-black uppercase tracking-widest text-gray-500">Confirmed deal amount (₹)</label>
+                        <input autoFocus type="number" min="1" value={dealAmount} onChange={(event) => setDealAmount(event.target.value)} placeholder="Enter agreed amount" className="mt-2 w-full rounded-xl border border-gray-300 bg-white p-3 text-sm font-bold outline-none focus:border-[#6F4BFF] focus:ring-2 focus:ring-[#6F4BFF]/20" />
+                    </div>
+                    {dealError ? <p className="text-sm font-semibold text-rose-600">{dealError}</p> : null}
+                    <p className="text-xs font-medium text-gray-500">This starts the shared deal record and opens it in Deal Management for schedule, documents, and stage updates.</p>
                     <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                        <Button variant="secondary" onClick={() => setPendingVisitDeal(null)}>No</Button>
-                        <Button onClick={handleConfirmVisitDeal}>Yes, Continue</Button>
+                        <Button variant="secondary" disabled={dealSubmitting} onClick={closeDealDialog}>Cancel</Button>
+                        <Button disabled={dealSubmitting} onClick={handleConfirmVisitDeal}>{dealSubmitting ? 'Starting…' : 'Start Deal'}</Button>
                     </div>
                 </div>
             </Modal>
@@ -2493,18 +2532,37 @@ const Clients = () => {
         setPageError('');
     };
 
-    const handleContinueToDeal = async ({ pipelineItem, project, visit } = {}) => {
+    const handleContinueToDeal = async ({ pipelineItem, project, visit, dealValue } = {}) => {
         const propertyId = pipelineItem?.propertyId
             || pipelineItem?.property_id
             || project?.propertyId
             || project?.property_id
             || visit?.propertyId
             || visit?.property_id;
-        const dealValue = pickDealValue(project?.priceRange, visit?.property?.price, selectedClient?.budget);
 
-        if (pipelineItem?.id) {
+        let assignedPropertyId = pipelineItem?.id
+            || pipelineItem?.assignedPropertyId
+            || pipelineItem?.assigned_property_id
+            || visit?.assignedPropertyId
+            || visit?.assigned_property_id;
+
+        if (!assignedPropertyId && (pipelineItem?.projectId || visit)) {
+            const assignments = await fetchClientAssignedProperties(selectedClientId);
+            const visitPropertyName = normalizeLookup(visit?.property?.name);
+            const matchingAssignment = assignments.find((assignment) => (
+                (pipelineItem?.projectId
+                    ? assignment.projectId === pipelineItem.projectId
+                    : normalizeLookup(assignment.projectName) === visitPropertyName
+                        || visitPropertyName.startsWith(`${normalizeLookup(assignment.projectName)} -`))
+                && (!pipelineItem?.units?.length
+                    || pipelineItem.units.some((unit) => assignment.units?.includes(unit)))
+            ));
+            assignedPropertyId = matchingAssignment?.id;
+        }
+
+        if (assignedPropertyId) {
             try {
-                await initiateDealForAssignedProperty(pipelineItem.id, {
+                await initiateDealForAssignedProperty(assignedPropertyId, {
                     bookingDate: new Date().toISOString().slice(0, 10),
                     dealValue: dealValue,
                     tokenAmount: 0,
@@ -2693,7 +2751,7 @@ const Clients = () => {
                                                     : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700'
                                             }`}
                                         >
-                                            {label}
+                                            {label === 'Broker' ? 'Added by Broker' : label}
                                         </button>
                                     ))}
                                 </div>

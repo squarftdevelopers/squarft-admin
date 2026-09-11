@@ -223,7 +223,13 @@ const normalizePipelineItem = (item = {}) => {
     : (item.unit?.unit_code ? [item.unit.unit_code] : []);
 
   return {
-    id: item.assigned_property_id || item.pipeline_id || item.assignment_id || item.id,
+    id: item.assigned_property_id
+      || item.assignedPropertyId
+      || item.assigned_property?.id
+      || item.assignment?.id
+      || item.pipeline_id
+      || item.assignment_id
+      || item.id,
     projectId: projId,
     propertyId: propId,
     projectName: projName,
@@ -339,6 +345,8 @@ export const normalizeClientVisit = (visit = {}, client = {}) => {
 
   return {
     id: visit.id || visit.visit_id,
+    assignedPropertyId: visit.assigned_property_id || visit.assignedPropertyId || null,
+    propertyId: visit.property_id || visit.propertyId || null,
     customerName: visit.customer_name || client.name || 'Client',
     customerPhone: visit.customer_phone || client.phone || '',
     officerName: visit.officer || visit.officer_name || 'Unassigned',
@@ -353,7 +361,7 @@ export const normalizeClientVisit = (visit = {}, client = {}) => {
     time: validStart && validEnd ? `${formatTime(validStart)} - ${formatTime(validEnd)}` : (visit.date_and_time || ''),
     slotStart: visit.slot_start || null,
     slotEnd: visit.slot_end || null,
-    status: visit.status || 'Scheduled',
+    status: toTitleCase(visit.status || 'Scheduled'),
     notes: visit.notes || '',
   };
 };
@@ -746,4 +754,3 @@ export const fetchOfficerBookedSlots = async (officerId, date) => {
   const data = unwrapData(await apiRequest(`${CLIENT_HUB_BASE}/officers/booked-slots?officerId=${officerId}&date=${date}`, { method: 'GET' }));
   return data || [];
 };
-
