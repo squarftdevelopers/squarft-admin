@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import Sidebar from '../components/Sidebar';
@@ -22,7 +22,9 @@ const AppLayout = () => {
 
       {/* Main Content */}
       <main className="flex-1 lg:ml-72 min-h-screen flex flex-col relative overflow-hidden">
-        <Outlet />
+        <Suspense fallback={<div role="status" className="p-6 text-sm text-gray-500">Loading page...</div>}>
+          <Outlet />
+        </Suspense>
       </main>
     </div>
   );
