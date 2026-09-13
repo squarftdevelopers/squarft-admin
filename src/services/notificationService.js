@@ -8,6 +8,7 @@ const NOTIFICATION_ENDPOINTS = {
   CAMPAIGNS: '/api/admin/notifications/campaigns',
   CAMPAIGN_DETAIL: (campaignId) => `/api/admin/notifications/campaigns/${campaignId}`,
   RECEIPTS_SYNC: (campaignId) => `/api/admin/notifications/campaigns/${campaignId}/receipts/sync`,
+  MEDIA: '/api/admin/notifications/media',
 };
 
 const unwrapData = (response) => response?.data ?? response;
@@ -145,3 +146,18 @@ export const fetchAdminNotifications = async (params = {}) =>
     unreadOnly: params.unreadOnly,
     type: params.type,
   });
+
+export const uploadNotificationMedia = async (file, altText = '') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (altText) {
+    formData.append('altText', altText);
+  }
+
+  const response = await apiRequest(NOTIFICATION_ENDPOINTS.MEDIA, {
+    method: 'POST',
+    body: formData,
+  });
+
+  return unwrapData(response);
+};

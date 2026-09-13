@@ -1,829 +1,952 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    AlertTriangle,
-    BellRing,
-    CheckCircle2,
-    Clock3,
-    Copy,
-    Eye,
-  Layers3,
-  MessageSquareText,
-    Radio,
-    ReceiptText,
-    RefreshCw,
-    Send,
-    ShieldCheck,
-    Smartphone,
-    Users,
-    X,
-    Zap,
+  AlertCircle,
+  Briefcase,
+  Building2,
+  Check,
+  CheckCircle2,
+  HardHat,
+  Image as ImageIcon,
+  Layers,
+  Link as LinkIcon,
+  Loader2,
+  RefreshCw,
+  Send,
+  Sparkles,
+  Trash2,
+  UploadCloud,
+  Users,
+  X,
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
 import {
-    createNotificationCampaign,
-    fetchNotificationCampaignDetail,
-    fetchNotificationCampaigns,
-    fetchNotificationTargets,
-    fetchNotificationTemplates,
-    previewNotificationPayload,
-    syncNotificationCampaignReceipts,
+  createNotificationCampaign,
+  fetchNotificationCampaigns,
+  fetchNotificationTargets,
+  syncNotificationCampaignReceipts,
+  uploadNotificationMedia,
 } from '../../services/notificationService';
 
-const defaultCampaignTemplates = [
-    {
-        key: 'offer',
-        label: 'Offer blast',
-        title: 'New properties are live',
-        body: 'Fresh verified inventory is available in your area. Tap to explore now.',
-        categoryId: 'marketing',
-    },
-    {
-        key: 'ops',
-        label: 'Ops alert',
-        title: 'Action required today',
-        body: 'You have pending tasks that need attention before end of day.',
-        categoryId: 'operations',
-    },
-    {
-        key: 'kyc',
-        label: 'KYC reminder',
-        title: 'KYC documents pending',
-        body: 'Please upload the remaining documents to keep your account active.',
-        categoryId: 'verification',
-    },
-];
+// Default metadata for known SquarFT apps
+const APP_METADATA = {
+  broker_app: {
+    name: 'SquarFT Broker',
+    desc: 'For Brokers & Channel Partners',
+    icon: Briefcase,
+    color: 'bg-emerald-500',
+    textColor: 'text-emerald-700',
+    badgeBg: 'bg-emerald-50 border-emerald-200',
+  },
+  user_app: {
+    name: 'SquarFT User',
+    desc: 'For Buyers & Customers',
+    icon: Users,
+    color: 'bg-blue-500',
+    textColor: 'text-blue-700',
+    badgeBg: 'bg-blue-50 border-blue-200',
+  },
+  field_officer_app: {
+    name: 'SquarFT Field Officer',
+    desc: 'For Field Agents & Inspection Staff',
+    icon: HardHat,
+    color: 'bg-amber-500',
+    textColor: 'text-amber-700',
+    badgeBg: 'bg-amber-50 border-amber-200',
+  },
+  sales_officer_app: {
+    name: 'SquarFT Sales Officer',
+    desc: 'For Sales Executives & CRM',
+    icon: Building2,
+    color: 'bg-purple-500',
+    textColor: 'text-purple-700',
+    badgeBg: 'bg-purple-50 border-purple-200',
+  },
+  project_panel_app: {
+    name: 'SquarFT Project Panel',
+    desc: 'For Builders & Developers',
+    icon: Layers,
+    color: 'bg-indigo-500',
+    textColor: 'text-indigo-700',
+    badgeBg: 'bg-indigo-50 border-indigo-200',
+  },
+};
 
-const initialForm = {
-    title: defaultCampaignTemplates[0].title,
-    body: defaultCampaignTemplates[0].body,
-    sendMode: 'QUEUE',
-    priority: 'high',
-    ttlHours: '24',
-    sound: 'default',
-    categoryId: defaultCampaignTemplates[0].categoryId,
-    collapseId: 'campaign-properties-live',
-    imageUrl: '',
+const DEFAULT_TARGETS = Object.entries(APP_METADATA).map(([key, meta], index) => ({
+  id: index + 1,
+  key,
+  name: meta.name,
+  active: 0,
+  tokens: 0,
+}));
+
+const QUICK_TEMPLATES = [
+  {
+    label: 'New Inventory 🏠',
+    title: 'New Luxury Properties Available! 🌟',
+    body: 'Fresh verified inventory just listed in your target locality. Check high-yield units now.',
     route: '/(tabs)/home',
-    extraData: '{\n  "campaignId": "properties-live-001",\n  "source": "admin_custom_notification"\n}',
-};
-
-const sendModeOptions = [
-    { value: 'QUEUE', label: 'Queue', helper: 'Worker sends later' },
-    { value: 'SEND_NOW', label: 'Send now', helper: 'Backend sends immediately' },
+  },
+  {
+    label: 'Exclusive Offer 🏷️',
+    title: 'Limited Time Partner Incentive 🔥',
+    body: 'Earn bonus brokerage on spot closings this weekend. Tap to view eligible projects.',
+    route: '/(tabs)/home',
+  },
+  {
+    label: 'System Update ⚙️',
+    title: 'App Update & Improvements Available',
+    body: 'We have updated lead tracking and instant payouts. Update now for the best experience.',
+    route: '/(tabs)/home',
+  },
 ];
-
-const parseJsonObject = (value) => {
-    try {
-        const parsed = JSON.parse(value || '{}');
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-            ? { value: parsed, hasError: false }
-            : { value: {}, hasError: true };
-    } catch {
-        return { value: {}, hasError: true };
-    }
-};
-
-const formatErrorMessage = (error, fallback = 'Something went wrong') => {
-    const firstError = error?.errors?.[0];
-    return error?.message
-        || firstError?.message
-        || (typeof firstError === 'string' ? firstError : fallback);
-};
-
-const formatCampaignStatus = (status) =>
-    String(status || 'QUEUED')
-        .replaceAll('_', ' ')
-        .toLowerCase()
-        .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-const getStatusTone = (status) => {
-    const normalized = String(status || '').toUpperCase();
-    if (normalized.includes('FAILED')) return 'bg-[#FDECEC] text-[#B42318]';
-    if (normalized.includes('SENT') || normalized.includes('CHECKED')) return 'bg-[#E9F8EF] text-[#04622E]';
-    if (normalized.includes('SENDING')) return 'bg-[#EAF2FF] text-[#175CD3]';
-    return 'bg-[#FFF7E6] text-[#A15A00]';
-};
-
-const formatDateTime = (value) => {
-    if (!value) return '-';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('en-IN');
-};
-
-const mapCampaignToLog = (campaign) => ({
-    id: campaign.id || campaign.campaignId || campaign.campaignCode,
-    campaignId: campaign.id || campaign.campaignId,
-    code: campaign.campaignCode || campaign.id || '-',
-    title: campaign.title || 'Untitled campaign',
-    apps: campaign.appsLabel || campaign.targetApps?.join(', ') || campaign.apps?.map((app) => app.appName || app.name || app.key).join(', ') || '-',
-    tokens: Number(campaign.totalTokens || 0),
-    batches: Number(campaign.batchCount || 0),
-    sent: Number(campaign.sentCount || 0),
-    failed: Number(campaign.failedCount || 0),
-    sendMode: campaign.sendMode || 'QUEUE',
-    rawStatus: campaign.status || 'QUEUED',
-    status: formatCampaignStatus(campaign.status),
-    createdAt: formatDateTime(campaign.createdAt),
-});
-
-const stringifyTemplateData = (extraData) => {
-    if (!extraData || typeof extraData !== 'object' || Array.isArray(extraData)) return initialForm.extraData;
-    return JSON.stringify(extraData, null, 2);
-};
 
 const NotificationCenter = () => {
-    const [appTargets, setAppTargets] = useState([]);
-    const [campaignTemplates, setCampaignTemplates] = useState(defaultCampaignTemplates);
-    const [selectedApps, setSelectedApps] = useState([]);
-    const [form, setForm] = useState(initialForm);
-    const [sendLog, setSendLog] = useState([]);
-    const [campaignSummary, setCampaignSummary] = useState(null);
-    const [payloadPreview, setPayloadPreview] = useState(null);
-    const [selectedCampaignDetail, setSelectedCampaignDetail] = useState(null);
-    const [loading, setLoading] = useState({
-        targets: true,
-        templates: true,
-        campaigns: true,
-        preview: false,
-        send: false,
-        detail: false,
-    });
-    const [loadError, setLoadError] = useState('');
-    const [previewError, setPreviewError] = useState('');
-    const [sendError, setSendError] = useState('');
-    const [sendSuccess, setSendSuccess] = useState('');
-    const [detailError, setDetailError] = useState('');
-    const [syncingCampaignId, setSyncingCampaignId] = useState('');
-    const [syncMessage, setSyncMessage] = useState('');
+  const fileInputRef = useRef(null);
 
-    const selectedTargets = useMemo(
-        () => appTargets.filter((app) => selectedApps.includes(app.key)),
-        [appTargets, selectedApps],
+  // Data states
+  const [appTargets, setAppTargets] = useState(DEFAULT_TARGETS);
+  const [selectedApps, setSelectedApps] = useState(['broker_app', 'user_app']);
+  const [campaigns, setCampaigns] = useState([]);
+
+  // Form states
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [route, setRoute] = useState('');
+  const [showUrlInput, setShowUrlInput] = useState(false);
+
+  // Status & Feedback states
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [isLoadingInitial, setIsLoadingInitial] = useState(true);
+  const [syncingId, setSyncingId] = useState(null);
+  const [statusMessage, setStatusMessage] = useState(null); // { type: 'success' | 'error', text: string }
+
+  // Load targets & campaigns
+  const loadData = useCallback(async () => {
+    try {
+      const [targetsRes, campaignsRes] = await Promise.allSettled([
+        fetchNotificationTargets(),
+        fetchNotificationCampaigns({ page: 1, limit: 15 }),
+      ]);
+
+      if (targetsRes.status === 'fulfilled' && targetsRes.value?.targets?.length) {
+        setAppTargets(targetsRes.value.targets);
+        // Default select apps with active devices or all
+        const activeAppKeys = targetsRes.value.targets
+          .filter((t) => (t.active || t.activeTokens || 0) > 0)
+          .map((t) => t.key);
+        if (activeAppKeys.length > 0) {
+          setSelectedApps(activeAppKeys);
+        } else {
+          setSelectedApps(targetsRes.value.targets.map((t) => t.key));
+        }
+      }
+
+      if (campaignsRes.status === 'fulfilled' && campaignsRes.value?.campaigns) {
+        setCampaigns(campaignsRes.value.campaigns);
+      }
+    } catch (err) {
+      console.error('Error loading notification data:', err);
+    } finally {
+      setIsLoadingInitial(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Calculations
+  const activeDeviceCount = useMemo(() => {
+    return selectedApps.reduce((sum, key) => {
+      const target = appTargets.find((t) => t.key === key);
+      return sum + (target?.active || target?.activeTokens || 0);
+    }, 0);
+  }, [appTargets, selectedApps]);
+
+  const toggleAppSelection = (key) => {
+    setSelectedApps((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
     );
+  };
 
-    const extraDataResult = useMemo(() => parseJsonObject(form.extraData), [form.extraData]);
-    const hasInvalidJson = extraDataResult.hasError;
-    const canRequestPreview = Boolean(selectedApps.length && form.title.trim() && form.body.trim() && !hasInvalidJson);
-    const notificationPayload = useMemo(() => ({
+  const handleSelectAll = () => {
+    setSelectedApps(appTargets.map((t) => t.key));
+  };
+
+  const handleClearAll = () => {
+    setSelectedApps([]);
+  };
+
+  const applyTemplate = (tpl) => {
+    setTitle(tpl.title);
+    setBody(tpl.body);
+    if (tpl.route) setRoute(tpl.route);
+    setStatusMessage({ type: 'success', text: `Loaded template: ${tpl.label}` });
+  };
+
+  // File upload handler
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setStatusMessage({ type: 'error', text: 'Please select an image file (PNG, JPG, WEBP).' });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setStatusMessage({ type: 'error', text: 'Image file size must be less than 5MB.' });
+      return;
+    }
+
+    setIsUploadingMedia(true);
+    setStatusMessage(null);
+
+    try {
+      const result = await uploadNotificationMedia(file, title || 'Push Notification Image');
+      if (result?.imageUrl) {
+        setImageUrl(result.imageUrl);
+        setStatusMessage({ type: 'success', text: 'Image uploaded and attached successfully!' });
+      } else {
+        throw new Error('No image URL returned from server');
+      }
+    } catch (err) {
+      console.error('Upload failed:', err);
+      setStatusMessage({
+        type: 'error',
+        text: err?.message || 'Failed to upload image. You can also paste an image URL directly below.',
+      });
+    } finally {
+      setIsUploadingMedia(false);
+    }
+  };
+
+  // Drag & drop handlers
+  const handleDrop = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileUpload(e.dataTransfer.files[0]);
+    }
+  };
+
+  // Send Notification
+  const handleSend = async () => {
+    if (selectedApps.length === 0) {
+      setStatusMessage({ type: 'error', text: 'Please select at least one mobile app to target.' });
+      return;
+    }
+    if (!title.trim()) {
+      setStatusMessage({ type: 'error', text: 'Please enter a notification title.' });
+      return;
+    }
+    if (!body.trim()) {
+      setStatusMessage({ type: 'error', text: 'Please enter a notification message body.' });
+      return;
+    }
+
+    setIsSending(true);
+    setStatusMessage(null);
+
+    try {
+      const payload = {
         targetApps: selectedApps,
-        title: form.title,
-        body: form.body,
-        priority: form.priority,
-        ttlHours: form.ttlHours,
-        sound: form.sound,
-        categoryId: form.categoryId,
-        collapseId: form.collapseId,
-        imageUrl: form.imageUrl,
-        route: form.route,
-        extraData: extraDataResult.value,
-    }), [extraDataResult.value, form, selectedApps]);
+        title: title.trim(),
+        body: body.trim(),
+        imageUrl: imageUrl.trim() || null,
+        route: route.trim() || null,
+        sendMode: 'SEND_NOW',
+        priority: 'high',
+        ttlHours: 24,
+        sound: 'default',
+      };
 
-    const campaignMetricTiles = useMemo(() => ([
-        { icon: Clock3, label: 'Queued', value: campaignSummary?.queued || 0 },
-        { icon: CheckCircle2, label: 'Sent', value: campaignSummary?.sent || 0 },
-        { icon: AlertTriangle, label: 'Failed', value: (campaignSummary?.failed || 0) + (campaignSummary?.partialFailed || 0) },
-    ]), [campaignSummary]);
+      const result = await createNotificationCampaign(payload);
 
-    const activePreview = canRequestPreview ? payloadPreview : null;
-    const totalActiveTokens = activePreview?.totalActiveTokens ?? selectedTargets.reduce((sum, app) => sum + (app.active || app.activeTokens || 0), 0);
-    const batchCount = activePreview?.batchCount ?? (totalActiveTokens > 0 ? Math.ceil(totalActiveTokens / 100) : 0);
-    const previewJson = activePreview || {
-        message: hasInvalidJson
-            ? 'Data JSON must be a valid object before the backend can build a payload preview.'
-            : previewError || 'Enter valid content and select active target apps to generate the backend payload preview.',
-        selectedTargets: selectedTargets.map((target) => ({
-            key: target.key,
-            name: target.name,
-            activeTokens: target.active || target.activeTokens || 0,
-            channelId: target.channelId,
-        })),
-    };
-    const isSendDisabled = (
-        loading.send ||
-        loading.preview ||
-        !canRequestPreview ||
-        Boolean(previewError)
-    );
+      setStatusMessage({
+        type: 'success',
+        text: `🚀 Notification "${result.campaignCode || 'Broadcast'}" sent immediately to ${result.totalTokens || activeDeviceCount} active devices!`,
+      });
 
-    const refreshCampaigns = useCallback(async () => {
-        const campaigns = await fetchNotificationCampaigns({ page: 1, limit: 20 });
-        setSendLog((campaigns.campaigns || []).map(mapCampaignToLog));
-        setCampaignSummary(campaigns.summary || null);
-        return campaigns;
-    }, []);
+      // Clear composer form
+      setTitle('');
+      setBody('');
+      setImageUrl('');
+      setRoute('');
 
-    useEffect(() => {
-        let isMounted = true;
+      // Refresh campaigns list
+      const updatedCampaigns = await fetchNotificationCampaigns({ page: 1, limit: 15 });
+      if (updatedCampaigns?.campaigns) {
+        setCampaigns(updatedCampaigns.campaigns);
+      }
+    } catch (err) {
+      console.error('Send failed:', err);
+      setStatusMessage({
+        type: 'error',
+        text: err?.message || 'Failed to dispatch push notification. Please check server logs.',
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
 
-        const loadNotificationData = async () => {
-            setLoading((current) => ({
-                ...current,
-                targets: true,
-                templates: true,
-                campaigns: true,
-            }));
+  // Sync receipts
+  const handleSyncReceipts = async (campaignId) => {
+    setSyncingId(campaignId);
+    try {
+      await syncNotificationCampaignReceipts(campaignId, { force: true });
+      const updatedCampaigns = await fetchNotificationCampaigns({ page: 1, limit: 15 });
+      if (updatedCampaigns?.campaigns) {
+        setCampaigns(updatedCampaigns.campaigns);
+      }
+      setStatusMessage({ type: 'success', text: 'Delivery receipts updated from Expo.' });
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err?.message || 'Failed to sync receipts.' });
+    } finally {
+      setSyncingId(null);
+    }
+  };
 
-            const [targetsResult, templatesResult, campaignsResult] = await Promise.allSettled([
-                fetchNotificationTargets(),
-                fetchNotificationTemplates(),
-                fetchNotificationCampaigns({ page: 1, limit: 20 }),
-            ]);
+  // Phone preview details
+  const previewAppMeta = useMemo(() => {
+    if (selectedApps.length === 1) {
+      return APP_METADATA[selectedApps[0]] || { name: 'SquarFT Mobile', icon: Building2 };
+    }
+    return { name: 'SquarFT Notification', icon: Building2 };
+  }, [selectedApps]);
 
-            if (!isMounted) return;
+  const PreviewIcon = previewAppMeta.icon;
 
-            const errors = [];
-
-            if (targetsResult.status === 'fulfilled') {
-                const targets = targetsResult.value?.targets || [];
-                setAppTargets(targets);
-                setSelectedApps(targets.map((target) => target.key));
-            } else {
-                setAppTargets([]);
-                setSelectedApps([]);
-                errors.push(formatErrorMessage(targetsResult.reason, 'Failed to load notification targets'));
-            }
-
-            if (templatesResult.status === 'fulfilled') {
-                const templates = templatesResult.value?.templates || [];
-                if (templates.length) setCampaignTemplates(templates);
-            } else {
-                errors.push(formatErrorMessage(templatesResult.reason, 'Failed to load notification templates'));
-            }
-
-            if (campaignsResult.status === 'fulfilled') {
-                setSendLog((campaignsResult.value?.campaigns || []).map(mapCampaignToLog));
-                setCampaignSummary(campaignsResult.value?.summary || null);
-            } else {
-                errors.push(formatErrorMessage(campaignsResult.reason, 'Failed to load notification campaigns'));
-            }
-
-            setLoadError([...new Set(errors)].join(' '));
-            setLoading((current) => ({
-                ...current,
-                targets: false,
-                templates: false,
-                campaigns: false,
-            }));
-        };
-
-        loadNotificationData();
-
-        return () => {
-            isMounted = false;
-        };
-    }, []);
-
-    useEffect(() => {
-        if (!canRequestPreview) return undefined;
-
-        let isActive = true;
-        const timeoutId = window.setTimeout(async () => {
-            setLoading((current) => ({ ...current, preview: true }));
-
-            try {
-                const preview = await previewNotificationPayload(notificationPayload);
-                if (!isActive) return;
-                setPayloadPreview(preview);
-                setPreviewError('');
-            } catch (error) {
-                if (!isActive) return;
-                setPayloadPreview(null);
-                setPreviewError(formatErrorMessage(error, 'Failed to generate notification payload preview'));
-            } finally {
-                if (isActive) {
-                    setLoading((current) => ({ ...current, preview: false }));
-                }
-            }
-        }, 350);
-
-        return () => {
-            isActive = false;
-            window.clearTimeout(timeoutId);
-        };
-    }, [canRequestPreview, notificationPayload]);
-
-    const toggleApp = (key) => {
-        setSelectedApps((current) => (
-            current.includes(key)
-                ? current.filter((item) => item !== key)
-                : [...current, key]
-        ));
-    };
-
-    const applyTemplate = (template) => {
-        setForm((current) => ({
-            ...current,
-            title: template.title,
-            body: template.body,
-            categoryId: template.categoryId,
-            priority: template.priority || current.priority,
-            ttlHours: String(template.ttlHours || current.ttlHours),
-            sound: template.sound ?? current.sound,
-            route: template.route || current.route,
-            sendMode: current.sendMode,
-            extraData: stringifyTemplateData(template.extraData),
-        }));
-    };
-
-    const handleSendNotification = async () => {
-        if (isSendDisabled) return;
-
-        setLoading((current) => ({ ...current, send: true }));
-        setSendError('');
-        setSendSuccess('');
-
-        try {
-            const campaign = await createNotificationCampaign({
-                ...notificationPayload,
-                sendMode: form.sendMode,
-            });
-            await refreshCampaigns();
-
-            setSendSuccess(`${campaign.campaignCode || 'Campaign'} ${form.sendMode === 'SEND_NOW' ? 'processed' : 'queued'} successfully`);
-        } catch (error) {
-            setSendError(formatErrorMessage(error, 'Failed to create notification campaign'));
-        } finally {
-            setLoading((current) => ({ ...current, send: false }));
+  return (
+    <div className="min-h-screen bg-slate-50/60 flex flex-col">
+      <Header
+        title="Custom Push Notifications"
+        rightContent={
+          <button
+            onClick={loadData}
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-xs"
+          >
+            <RefreshCw className="w-4 h-4 text-slate-500" />
+            Refresh Devices
+          </button>
         }
-    };
+      />
 
-    const handleOpenCampaignDetail = async (campaignId) => {
-        if (!campaignId) return;
+      <main className="flex-1 max-w-7xl w-full mx-auto p-6 md:p-8 space-y-8">
+        {/* Alerts / Status Banner */}
+        {statusMessage && (
+          <div
+            className={`p-4 rounded-2xl flex items-center justify-between border shadow-xs animate-in fade-in slide-in-from-top-2 duration-200 ${
+              statusMessage.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-red-50 border-red-200 text-red-900'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              {statusMessage.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+              )}
+              <span className="text-sm font-medium">{statusMessage.text}</span>
+            </div>
+            <button
+              onClick={() => setStatusMessage(null)}
+              className="p-1 hover:bg-black/5 rounded-lg text-slate-500 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-        setSelectedCampaignDetail(null);
-        setDetailError('');
-        setSyncMessage('');
-        setLoading((current) => ({ ...current, detail: true }));
+        {/* 2-Column Main Composer Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Left Column: Notification Composer (7 Cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 md:p-8 space-y-7">
+              {/* Header & Quick Templates */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-amber-500" />
+                    Compose Notification
+                  </h2>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Instant Broadcast
+                  </span>
+                </div>
+                {/* Quick Templates Bar */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-xs text-slate-500 font-medium mr-1">Templates:</span>
+                  {QUICK_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.label}
+                      type="button"
+                      onClick={() => applyTemplate(tpl)}
+                      className="px-2.5 py-1 text-xs font-medium bg-slate-100 hover:bg-slate-200/80 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-        try {
-            const detail = await fetchNotificationCampaignDetail(campaignId);
-            setSelectedCampaignDetail(detail);
-        } catch (error) {
-            setDetailError(formatErrorMessage(error, 'Failed to load notification campaign detail'));
-        } finally {
-            setLoading((current) => ({ ...current, detail: false }));
-        }
-    };
+              {/* Step 1: Target Mobile Apps */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    1. Select Target Apps ({selectedApps.length} selected)
+                  </label>
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={handleSelectAll}
+                      className="text-blue-600 hover:text-blue-700 font-semibold cursor-pointer"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={handleClearAll}
+                      className="text-slate-500 hover:text-slate-700 font-semibold cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
 
-    const handleSyncReceipts = async (campaignId, force = false) => {
-        if (!campaignId) return;
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {appTargets.map((target) => {
+                    const isSelected = selectedApps.includes(target.key);
+                    const meta = APP_METADATA[target.key] || {
+                      name: target.name || target.key,
+                      desc: 'SquarFT App',
+                      icon: Building2,
+                      color: 'bg-slate-500',
+                      textColor: 'text-slate-700',
+                      badgeBg: 'bg-slate-50 border-slate-200',
+                    };
+                    const IconComponent = meta.icon;
+                    const activeCount = target.active || target.activeTokens || 0;
 
-        setSyncingCampaignId(campaignId);
-        setSyncMessage('');
-        setDetailError('');
-
-        try {
-            const result = await syncNotificationCampaignReceipts(campaignId, { force });
-            setSyncMessage(result?.campaignCode ? `Receipt sync completed for ${result.campaignCode}` : 'Receipt sync completed');
-            await refreshCampaigns();
-            const detail = await fetchNotificationCampaignDetail(campaignId);
-            setSelectedCampaignDetail(detail);
-        } catch (error) {
-            setDetailError(formatErrorMessage(error, 'Failed to sync notification receipts'));
-        } finally {
-            setSyncingCampaignId('');
-        }
-    };
-
-    return (
-        <div className="flex h-full flex-1 flex-col bg-[#F5F6FA] text-[#15121F]">
-            <Header title="Custom Notifications" />
-
-            <main className="flex-1 overflow-y-auto p-6 md:p-8">
-                <div className="mx-auto max-w-[1600px] space-y-5">
-                    <section className="rounded-[10px] border border-[#D8D2EB] bg-white p-5 shadow-[0_1px_0_rgba(33,24,88,0.03)]">
-                        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                            <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className="rounded-full bg-[#E8E4FF] px-3 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#2717D7]">Expo push service aligned</span>
-                                    <span className="rounded-full bg-[#E9F8EF] px-3 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#04622E]">Admin + Super admin</span>
-                                </div>
-                                <h2 className="mt-3 text-2xl font-black text-[#171327]">Send custom notifications to every SquarFT app</h2>
-                                <p className="mt-1 max-w-3xl text-sm font-medium leading-6 text-[#615C71]">
-                                    Compose campaign-style push notifications, target one or more apps, preview the Expo message payload, and hand it to the backend sender.
-                                </p>
-                                {loadError && <p className="mt-2 text-xs font-black text-[#B41212]">{loadError}</p>}
+                    return (
+                      <div
+                        key={target.key}
+                        onClick={() => toggleAppSelection(target.key)}
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50/40 ring-1 ring-blue-500/20 shadow-xs'
+                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-xs ${meta.color}`}
+                          >
+                            <IconComponent className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-800 leading-tight">
+                              {meta.name}
+                            </h4>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span
+                                className={`w-2 h-2 rounded-full ${
+                                  activeCount > 0 ? 'bg-emerald-500' : 'bg-slate-300'
+                                }`}
+                              />
+                              <span className="text-xs text-slate-500 font-medium">
+                                {activeCount} active device{activeCount === 1 ? '' : 's'}
+                              </span>
                             </div>
-                            <div className="grid grid-cols-3 gap-3 sm:min-w-[420px]">
-                                <MetricTile icon={Smartphone} label="Apps" value={selectedTargets.length} />
-                                <MetricTile icon={Users} label="Tokens" value={totalActiveTokens.toLocaleString('en-IN')} />
-                                <MetricTile icon={Layers3} label="Batches" value={batchCount} />
-                            </div>
+                          </div>
                         </div>
-                    </section>
 
-                    <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
-                        <section className="space-y-5">
-                            <div className="rounded-[10px] border border-[#D8D2EB] bg-white p-5">
-                                <SectionHeader icon={Radio} title="Target apps" helper="Each selected app maps to its own Expo project, channel, and route metadata." />
-                                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                    {appTargets.map((app) => {
-                                        const selected = selectedApps.includes(app.key);
-                                        return (
-                                            <button
-                                                key={app.key}
-                                                type="button"
-                                                onClick={() => toggleApp(app.key)}
-                                                className={`rounded-[10px] border p-4 text-left transition-all ${selected ? 'border-[#2717D7] bg-[#F4F1FF] shadow-sm' : 'border-[#E1DDF0] bg-[#FCFBFF] hover:border-[#2717D7]'}`}
-                                            >
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <p className="truncate text-base font-black text-[#171327]">{app.name}</p>
-                                                        <p className="mt-1 text-xs font-medium text-[#615C71]">{app.audience}</p>
-                                                    </div>
-                                                    <span className="grid h-8 w-8 place-items-center rounded-[8px] text-white" style={{ backgroundColor: app.color }}>
-                                                        {selected ? <CheckCircle2 size={16} /> : <BellRing size={16} />}
-                                                    </span>
-                                                </div>
-                                                <div className="mt-4 grid grid-cols-2 gap-2 text-center">
-                                                    <MiniStat label="Active" value={app.active.toLocaleString('en-IN')} />
-                                                    <MiniStat label="Channel" value={app.channelId} />
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                {loading.targets && <p className="mt-3 text-xs font-black text-[#615C71]">Loading notification targets...</p>}
-                                {!loading.targets && !appTargets.length && <p className="mt-3 text-xs font-black text-[#B41212]">No notification targets available.</p>}
-                            </div>
+                        <div
+                          className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-colors ${
+                            isSelected
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-                            <div className="rounded-[10px] border border-[#D8D2EB] bg-white p-5">
-                                <SectionHeader icon={MessageSquareText} title="Notification content" helper="Keep title and body short so Android and iOS notification trays display cleanly." />
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                    {campaignTemplates.map((template) => (
-                                        <button
-                                            key={template.key}
-                                            type="button"
-                                            onClick={() => applyTemplate(template)}
-                                            className="rounded-[8px] border border-[#D8D2EB] bg-[#FCFBFF] px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#514B63] hover:border-[#2717D7] hover:text-[#2717D7]"
-                                        >
-                                            {template.label}
-                                        </button>
-                                    ))}
-                                </div>
+              {/* Step 2: Message Content */}
+              <div className="space-y-4">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  2. Notification Content
+                </label>
 
-                                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                                    <Field label="Title" value={form.title} onChange={(value) => setForm({ ...form, title: value })} />
-                                    <Field label="Category ID" value={form.categoryId} onChange={(value) => setForm({ ...form, categoryId: value })} />
-                                    <label className="block md:col-span-2">
-                                        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#6B657A]">Body</span>
-                                        <textarea
-                                            value={form.body}
-                                            onChange={(event) => setForm({ ...form, body: event.target.value })}
-                                            rows={4}
-                                            className="mt-1 w-full rounded-[8px] border border-[#D8D2EB] bg-[#FCFBFF] px-3 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-[#2717D7]/20"
-                                        />
-                                    </label>
-                                    <Field label="Deep link route" value={form.route} onChange={(value) => setForm({ ...form, route: value })} />
-                                    <Field label="Rich image URL" value={form.imageUrl} onChange={(value) => setForm({ ...form, imageUrl: value })} placeholder="https://..." />
-                                </div>
-                            </div>
+                {/* Title */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-sm font-semibold text-slate-700">Notification Title *</span>
+                    <span className="text-xs text-slate-400">{title.length} chars</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. Exclusive New Property In Bengaluru! 🏢"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all"
+                  />
+                </div>
 
-                            <div className="rounded-[10px] border border-[#D8D2EB] bg-white p-5">
-                                <SectionHeader icon={ShieldCheck} title="Expo delivery options" helper="These fields line up with Expo push message fields and should be sent server-side." />
-                                <div className="mt-4">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#6B657A]">Send mode</span>
-                                    <div className="mt-1 grid gap-2 sm:grid-cols-2">
-                                        {sendModeOptions.map((option) => {
-                                            const selected = form.sendMode === option.value;
-                                            return (
-                                                <button
-                                                    key={option.value}
-                                                    type="button"
-                                                    onClick={() => setForm({ ...form, sendMode: option.value })}
-                                                    className={`flex min-h-16 items-center justify-between gap-3 rounded-[8px] border px-3 py-2 text-left transition-all ${selected ? 'border-[#2717D7] bg-[#F4F1FF] text-[#2717D7]' : 'border-[#D8D2EB] bg-[#FCFBFF] text-[#514B63] hover:border-[#2717D7]'}`}
-                                                >
-                                                    <span>
-                                                        <span className="block text-xs font-black uppercase tracking-[0.12em]">{option.label}</span>
-                                                        <span className="mt-1 block text-[11px] font-semibold text-[#7B7486]">{option.helper}</span>
-                                                    </span>
-                                                    {option.value === 'SEND_NOW' ? <Zap size={17} /> : <Clock3 size={17} />}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="mt-4 grid gap-4 md:grid-cols-3">
-                                    <SelectField label="Priority" value={form.priority} onChange={(value) => setForm({ ...form, priority: value })} options={['default', 'normal', 'high']} />
-                                    <SelectField label="Sound" value={form.sound} onChange={(value) => setForm({ ...form, sound: value })} options={['default', '']} />
-                                    <Field label="TTL hours" value={form.ttlHours} onChange={(value) => setForm({ ...form, ttlHours: value })} />
-                                    <Field label="Collapse ID" value={form.collapseId} onChange={(value) => setForm({ ...form, collapseId: value })} />
-                                    <div className="md:col-span-2">
-                                        <label className="block">
-                                            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#6B657A]">Data JSON</span>
-                                            <textarea
-                                                value={form.extraData}
-                                                onChange={(event) => setForm({ ...form, extraData: event.target.value })}
-                                                rows={5}
-                                                className={`mt-1 w-full rounded-[8px] border bg-[#FCFBFF] px-3 py-3 font-mono text-xs outline-none focus:ring-2 ${hasInvalidJson ? 'border-[#B41212] focus:ring-[#B41212]/20' : 'border-[#D8D2EB] focus:ring-[#2717D7]/20'}`}
-                                            />
-                                        </label>
-                                        {hasInvalidJson && <p className="mt-2 text-xs font-black text-[#B41212]">Data JSON is invalid. Fix this before sending.</p>}
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
+                {/* Body */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-sm font-semibold text-slate-700">Message Body *</span>
+                    <span className="text-xs text-slate-400">{body.length} chars</span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    placeholder="e.g. High-demand residential units open for booking with 0% processing fee. Tap to review exclusive details."
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all resize-none"
+                  />
+                </div>
+              </div>
 
-                        <aside className="space-y-5">
-                            <div className="rounded-[10px] border border-[#D8D2EB] bg-white p-5">
-                                <SectionHeader icon={Smartphone} title="Phone preview" helper="Approximate notification tray view" />
-                                <div className="mx-auto mt-5 max-w-[320px] rounded-[28px] border border-[#D8D2EB] bg-[#171327] p-3 shadow-xl">
-                                    <div className="rounded-[22px] bg-[#F4F1FF] p-4">
-                                        <div className="rounded-[16px] bg-white p-4 shadow-sm">
-                                            <div className="flex items-center gap-2">
-                                                <span className="grid h-8 w-8 place-items-center rounded-[8px] bg-[#2717D7] text-white"><BellRing size={16} /></span>
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-xs font-black text-[#171327]">SquarFT</p>
-                                                    <p className="text-[10px] font-medium text-[#7B7486]">now</p>
-                                                </div>
-                                            </div>
-                                            <p className="mt-4 text-sm font-black text-[#171327]">{form.title || 'Notification title'}</p>
-                                            <p className="mt-1 text-xs font-medium leading-5 text-[#514B63]">{form.body || 'Notification body'}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+              {/* Step 3: Rich Media / Image Attachment */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 text-blue-500" />
+                    3. Notification Image (Rich Push)
+                  </label>
+                  {!showUrlInput ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowUrlInput(true)}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-semibold cursor-pointer"
+                    >
+                      Paste URL instead
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowUrlInput(false)}
+                      className="text-xs text-slate-500 hover:text-slate-700 font-semibold cursor-pointer"
+                    >
+                      Use File Upload
+                    </button>
+                  )}
+                </div>
 
-                            <div className="rounded-[10px] border border-[#D8D2EB] bg-white p-5">
-                                <SectionHeader icon={Copy} title="Expo payload preview" helper="Backend should chunk real tokens into arrays of 100 messages per request." />
-                                <pre className="mt-4 max-h-[360px] overflow-auto rounded-[8px] bg-[#171327] p-4 text-[11px] leading-5 text-white">
-                                    {JSON.stringify(previewJson, null, 2)}
-                                </pre>
-                                {previewError && <p className="mt-2 text-xs font-black text-[#B41212]">{previewError}</p>}
-                                {sendError && <p className="mt-2 text-xs font-black text-[#B41212]">{sendError}</p>}
-                                {sendSuccess && <p className="mt-2 text-xs font-black text-[#04622E]">{sendSuccess}</p>}
-                                <button
-                                    type="button"
-                                    onClick={handleSendNotification}
-                                    disabled={isSendDisabled}
-                                    className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-[#2717D7] px-4 text-xs font-black uppercase tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:bg-[#C8C2E8]"
-                                >
-                                    <Send size={16} /> {loading.send ? 'Working...' : form.sendMode === 'SEND_NOW' ? 'Send now' : 'Queue notification'}
-                                </button>
-                            </div>
-                        </aside>
+                {/* Upload or URL input */}
+                {!imageUrl ? (
+                  !showUrlInput ? (
+                    // Drag & Drop Box
+                    <div
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                        isUploadingMedia
+                          ? 'border-blue-300 bg-blue-50/50'
+                          : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50/60'
+                      }`}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleFileUpload(e.target.files[0]);
+                          }
+                        }}
+                      />
+
+                      {isUploadingMedia ? (
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                          <p className="text-sm font-semibold text-slate-700">
+                            Uploading image to storage...
+                          </p>
+                          <p className="text-xs text-slate-400">Please wait a moment</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-1">
+                            <UploadCloud className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-semibold text-blue-600 hover:underline">
+                              Click to upload
+                            </span>{' '}
+                            <span className="text-sm text-slate-600">or drag and drop</span>
+                          </div>
+                          <p className="text-xs text-slate-400">
+                            PNG, JPG, or WEBP (Max 5MB) • Rich banner notification
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // Direct URL input
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <input
+                          type="url"
+                          value={imageUrl}
+                          onChange={(e) => setImageUrl(e.target.value)}
+                          placeholder="https://example.com/images/property-banner.jpg"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all pr-10"
+                        />
+                        <ImageIcon className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5" />
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Must be a publicly accessible image URL ending in .jpg, .png, or .webp
+                      </p>
+                    </div>
+                  )
+                ) : (
+                  // Attached Image preview & remove
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="flex items-center gap-3.5 overflow-hidden">
+                      <img
+                        src={imageUrl}
+                        alt="Attached preview"
+                        className="w-14 h-14 object-cover rounded-xl border border-slate-200 shrink-0 bg-white"
+                        onError={(e) => {
+                          e.target.src = 'https://placehold.co/100x100?text=Invalid';
+                        }}
+                      />
+                      <div className="truncate">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Image Attached & Verified
+                        </div>
+                        <p className="text-xs text-slate-500 truncate mt-0.5 max-w-xs">{imageUrl}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageUrl('');
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-colors shrink-0 cursor-pointer"
+                      title="Remove Image"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Optional Deep Link Route */}
+              <div className="pt-1">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <LinkIcon className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    App Screen Route (Optional)
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  value={route}
+                  onChange={(e) => setRoute(e.target.value)}
+                  placeholder="e.g. /(tabs)/home or /deals or /inventory"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-medium transition-all"
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  When the user taps the notification, the app navigates directly to this route.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                <div className="text-xs text-slate-500">
+                  <span className="font-semibold text-slate-800">{selectedApps.length}</span> app{selectedApps.length === 1 ? '' : 's'} selected •{' '}
+                  <span className="font-semibold text-slate-800">{activeDeviceCount}</span> registered recipient{activeDeviceCount === 1 ? '' : 's'}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={isSending || selectedApps.length === 0 || !title.trim() || !body.trim()}
+                  className={`inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-bold text-sm text-white shadow-md transition-all cursor-pointer ${
+                    isSending || selectedApps.length === 0 || !title.trim() || !body.trim()
+                      ? 'bg-slate-300 cursor-not-allowed shadow-none'
+                      : 'bg-blue-600 hover:bg-blue-700 active:scale-[0.99] shadow-blue-500/25'
+                  }`}
+                >
+                  {isSending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Sending Broadcast...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Send Notification Now
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Live Smartphone Preview (5 Cols) */}
+          <div className="lg:col-span-5 space-y-4">
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  Live Smartphone Preview
+                </h3>
+                <span className="text-xs font-medium text-slate-400">Lockscreen / Banner</span>
+              </div>
+
+              {/* Smartphone Outer Shell */}
+              <div className="relative mx-auto w-full max-w-[320px] aspect-[9/18.5] bg-slate-900 rounded-[44px] p-3 shadow-2xl border-4 border-slate-800 ring-1 ring-slate-950/20 flex flex-col justify-between overflow-hidden">
+                {/* Wallpaper background with subtle gradient */}
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/90 via-slate-900 to-sky-950 pointer-events-none" />
+
+                {/* Phone Header / Dynamic Island & Clock */}
+                <div className="relative z-10 pt-2 px-4 flex items-center justify-between text-white/90 text-xs font-semibold">
+                  <span>9:41</span>
+                  {/* Dynamic Island */}
+                  <div className="w-20 h-4 bg-black rounded-full mx-auto" />
+                  <div className="flex items-center gap-1 text-[10px]">
+                    <span>5G</span>
+                    <div className="w-4 h-2 border border-white/80 rounded-xs p-0.5">
+                      <div className="h-full w-2.5 bg-white" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Center Lockscreen Clock */}
+                <div className="relative z-10 text-center py-6 text-white/90">
+                  <div className="text-4xl font-light tracking-tight">09:41</div>
+                  <div className="text-xs font-medium text-white/70 mt-1">Wednesday, September 16</div>
+                </div>
+
+                {/* Push Notification Card Popup */}
+                <div className="relative z-10 my-auto">
+                  <div className="bg-white/90 backdrop-blur-xl border border-white/40 rounded-2xl p-3.5 shadow-xl text-slate-900 space-y-2 animate-in fade-in zoom-in-95 duration-300">
+                    {/* Header: App icon + App Name + time */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 rounded-md bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                          <PreviewIcon className="w-3 h-3" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-800 tracking-tight">
+                          {previewAppMeta.name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-medium">now</span>
                     </div>
 
-                    <section className="rounded-[10px] border border-[#D8D2EB] bg-white p-5">
-                        <SectionHeader icon={ReceiptText} title="Send log" helper="Tracks queued admin campaigns and the Expo receipt follow-up your backend should complete." />
-                        <div className="mt-4 grid gap-3 md:grid-cols-3">
-                            {campaignMetricTiles.map((tile) => (
-                                <MetricTile key={tile.label} icon={tile.icon} label={tile.label} value={tile.value.toLocaleString('en-IN')} />
-                            ))}
-                        </div>
-                        <div className="mt-4 overflow-x-auto">
-                            <table className="w-full min-w-[980px] text-left">
-                                <thead className="bg-[#F4F1FF] text-[10px] font-black uppercase tracking-[0.12em] text-[#2A2535]">
-                                    <tr>
-                                        <th className="px-4 py-3">Campaign</th>
-                                        <th className="px-4 py-3">Apps</th>
-                                        <th className="px-4 py-3">Tokens</th>
-                                        <th className="px-4 py-3">Expo batches</th>
-                                        <th className="px-4 py-3">Sent / Failed</th>
-                                        <th className="px-4 py-3">Mode</th>
-                                        <th className="px-4 py-3">Status</th>
-                                        <th className="px-4 py-3">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {loading.campaigns && (
-                                        <tr className="border-t border-[#E1DDF0]">
-                                            <td colSpan={8} className="px-4 py-5 text-xs font-black text-[#615C71]">Loading campaigns...</td>
-                                        </tr>
-                                    )}
-                                    {!loading.campaigns && sendLog.length === 0 && (
-                                        <tr className="border-t border-[#E1DDF0]">
-                                            <td colSpan={8} className="px-4 py-5 text-xs font-black text-[#615C71]">No notification campaigns found.</td>
-                                        </tr>
-                                    )}
-                                    {!loading.campaigns && sendLog.map((item) => (
-                                        <tr key={item.id} className="border-t border-[#E1DDF0]">
-                                            <td className="px-4 py-4">
-                                                <p className="text-sm font-black text-[#171327]">{item.title}</p>
-                                                <p className="text-[10px] font-medium text-[#615C71]">{item.code} / {item.createdAt}</p>
-                                            </td>
-                                            <td className="px-4 py-4 text-xs font-medium text-[#514B63]">{item.apps}</td>
-                                            <td className="px-4 py-4 text-sm font-black text-[#171327]">{item.tokens.toLocaleString('en-IN')}</td>
-                                            <td className="px-4 py-4 text-sm font-black text-[#2717D7]">{item.batches}</td>
-                                            <td className="px-4 py-4 text-xs font-black text-[#514B63]">{item.sent.toLocaleString('en-IN')} / {item.failed.toLocaleString('en-IN')}</td>
-                                            <td className="px-4 py-4 text-xs font-black text-[#514B63]">{item.sendMode.replace('_', ' ')}</td>
-                                            <td className="px-4 py-4">
-                                                <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-black uppercase ${getStatusTone(item.rawStatus)}`}>
-                                                    <Clock3 size={13} /> {item.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-4">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleOpenCampaignDetail(item.campaignId)}
-                                                        disabled={!item.campaignId || loading.detail}
-                                                        className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-[#D8D2EB] bg-white px-3 text-[10px] font-black uppercase tracking-[0.1em] text-[#2717D7] disabled:cursor-not-allowed disabled:text-[#9A94AB]"
-                                                    >
-                                                        <Eye size={14} /> Detail
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleSyncReceipts(item.campaignId)}
-                                                        disabled={!item.campaignId || syncingCampaignId === item.campaignId}
-                                                        className="inline-flex h-9 items-center gap-2 rounded-[8px] border border-[#D8D2EB] bg-[#FCFBFF] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-[#514B63] disabled:cursor-not-allowed disabled:text-[#9A94AB]"
-                                                    >
-                                                        <RefreshCw size={14} className={syncingCampaignId === item.campaignId ? 'animate-spin' : ''} /> Sync
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
+                    {/* Notification Title & Body */}
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 leading-snug">
+                        {title.trim() || 'Notification Title'}
+                      </h4>
+                      <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
+                        {body.trim() || 'Your notification message preview will appear here in real-time.'}
+                      </p>
+                    </div>
 
-                    {(loading.detail || detailError || selectedCampaignDetail) && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#171327]/55 p-4">
-                            <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-[10px] bg-white shadow-2xl">
-                                <div className="flex items-start justify-between gap-4 border-b border-[#E1DDF0] p-5">
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-[0.14em] text-[#5E5A71]">Campaign detail</p>
-                                        <h3 className="mt-1 text-xl font-black text-[#171327]">
-                                            {selectedCampaignDetail?.campaign?.campaignCode || (loading.detail ? 'Loading campaign...' : 'Notification campaign')}
-                                        </h3>
-                                        {selectedCampaignDetail?.campaign && (
-                                            <p className="mt-1 text-xs font-semibold text-[#615C71]">
-                                                {selectedCampaignDetail.campaign.title} / {formatDateTime(selectedCampaignDetail.campaign.createdAt)}
-                                            </p>
-                                        )}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setSelectedCampaignDetail(null);
-                                            setDetailError('');
-                                            setSyncMessage('');
-                                        }}
-                                        className="grid h-9 w-9 place-items-center rounded-[8px] border border-[#D8D2EB] text-[#514B63]"
-                                    >
-                                        <X size={17} />
-                                    </button>
-                                </div>
-
-                                <div className="max-h-[calc(90vh-92px)] overflow-y-auto p-5">
-                                    {loading.detail && <p className="text-xs font-black text-[#615C71]">Loading campaign detail...</p>}
-                                    {detailError && <p className="rounded-[8px] bg-[#FDECEC] px-3 py-2 text-xs font-black text-[#B42318]">{detailError}</p>}
-                                    {syncMessage && <p className="mb-4 rounded-[8px] bg-[#E9F8EF] px-3 py-2 text-xs font-black text-[#04622E]">{syncMessage}</p>}
-
-                                    {selectedCampaignDetail?.campaign && (
-                                        <div className="space-y-5">
-                                            <div className="grid gap-3 md:grid-cols-5">
-                                                <MetricTile icon={Users} label="Tokens" value={selectedCampaignDetail.campaign.totalTokens.toLocaleString('en-IN')} />
-                                                <MetricTile icon={Layers3} label="Batches" value={selectedCampaignDetail.campaign.batchCount} />
-                                                <MetricTile icon={CheckCircle2} label="Sent" value={selectedCampaignDetail.campaign.sentCount.toLocaleString('en-IN')} />
-                                                <MetricTile icon={AlertTriangle} label="Failed" value={selectedCampaignDetail.campaign.failedCount.toLocaleString('en-IN')} />
-                                                <MetricTile icon={Clock3} label="TTL seconds" value={selectedCampaignDetail.campaign.ttlSeconds.toLocaleString('en-IN')} />
-                                            </div>
-
-                                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-[#E1DDF0] bg-[#FCFBFF] p-4">
-                                                <div>
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#7B7486]">Backend status</p>
-                                                    <span className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-black uppercase ${getStatusTone(selectedCampaignDetail.campaign.status)}`}>
-                                                        <Clock3 size={13} /> {formatCampaignStatus(selectedCampaignDetail.campaign.status)}
-                                                    </span>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleSyncReceipts(selectedCampaignDetail.campaign.id, true)}
-                                                    disabled={syncingCampaignId === selectedCampaignDetail.campaign.id}
-                                                    className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-[#2717D7] px-4 text-[10px] font-black uppercase tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:bg-[#C8C2E8]"
-                                                >
-                                                    <RefreshCw size={15} className={syncingCampaignId === selectedCampaignDetail.campaign.id ? 'animate-spin' : ''} />
-                                                    Force receipt sync
-                                                </button>
-                                            </div>
-
-                                            <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-                                                <div className="rounded-[8px] border border-[#E1DDF0] p-4">
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#5E5A71]">Target apps</p>
-                                                    <div className="mt-3 space-y-2">
-                                                        {selectedCampaignDetail.targets.map((target) => (
-                                                            <div key={target.appKey} className="flex items-center justify-between gap-3 rounded-[7px] bg-[#FCFBFF] px-3 py-2 text-xs">
-                                                                <span className="font-black text-[#171327]">{target.appName}</span>
-                                                                <span className="font-semibold text-[#615C71]">{target.activeTokens.toLocaleString('en-IN')} tokens / {target.channelId}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                <div className="rounded-[8px] border border-[#E1DDF0] p-4">
-                                                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#5E5A71]">Timeline</p>
-                                                    <div className="mt-3 space-y-2">
-                                                        {selectedCampaignDetail.timeline.map((event, index) => (
-                                                            <div key={`${event.type}-${index}`} className="rounded-[7px] bg-[#FCFBFF] px-3 py-2">
-                                                                <p className="text-xs font-black text-[#171327]">{formatCampaignStatus(event.type)}</p>
-                                                                <p className="mt-1 text-xs font-medium text-[#615C71]">{event.message}</p>
-                                                                <p className="mt-1 text-[10px] font-semibold text-[#8B8498]">{formatDateTime(event.createdAt)}</p>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="overflow-x-auto rounded-[8px] border border-[#E1DDF0]">
-                                                <table className="w-full min-w-[780px] text-left">
-                                                    <thead className="bg-[#F4F1FF] text-[10px] font-black uppercase tracking-[0.12em] text-[#2A2535]">
-                                                        <tr>
-                                                            <th className="px-4 py-3">Batch</th>
-                                                            <th className="px-4 py-3">App</th>
-                                                            <th className="px-4 py-3">Tokens</th>
-                                                            <th className="px-4 py-3">Send status</th>
-                                                            <th className="px-4 py-3">Receipt</th>
-                                                            <th className="px-4 py-3">Success / Failed</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {selectedCampaignDetail.batches.map((batch) => (
-                                                            <tr key={batch.id} className="border-t border-[#E1DDF0]">
-                                                                <td className="px-4 py-3 text-xs font-black text-[#171327]">#{batch.batchNo}</td>
-                                                                <td className="px-4 py-3 text-xs font-medium text-[#514B63]">{batch.appKey}</td>
-                                                                <td className="px-4 py-3 text-xs font-black text-[#171327]">{batch.tokenCount.toLocaleString('en-IN')}</td>
-                                                                <td className="px-4 py-3 text-xs font-black text-[#514B63]">{formatCampaignStatus(batch.status)}</td>
-                                                                <td className="px-4 py-3 text-xs font-black text-[#514B63]">{formatCampaignStatus(batch.receiptStatus)}</td>
-                                                                <td className="px-4 py-3 text-xs font-black text-[#514B63]">{batch.successCount.toLocaleString('en-IN')} / {batch.failedCount.toLocaleString('en-IN')}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-
-                                            <div className="rounded-[8px] border border-[#E1DDF0] p-4">
-                                                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[#5E5A71]">Sanitized sample payload</p>
-                                                <pre className="mt-3 max-h-[280px] overflow-auto rounded-[8px] bg-[#171327] p-4 text-[11px] leading-5 text-white">
-                                                    {JSON.stringify(selectedCampaignDetail.samplePayload || {}, null, 2)}
-                                                </pre>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                    {/* Rich Image Preview Banner (Expanded Push Style) */}
+                    {imageUrl && (
+                      <div className="mt-2 rounded-xl overflow-hidden border border-slate-200/80 bg-slate-100 shadow-inner">
+                        <img
+                          src={imageUrl}
+                          alt="Notification Rich Media"
+                          className="w-full h-32 object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      </div>
                     )}
+
+                    {/* Deep link badge */}
+                    {route && (
+                      <div className="pt-1 flex items-center gap-1 text-[10px] text-blue-600 font-semibold">
+                        <LinkIcon className="w-2.5 h-2.5" />
+                        <span className="truncate">{route}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-            </main>
+
+                {/* Phone Bottom Home Bar */}
+                <div className="relative z-10 pb-1 flex justify-center">
+                  <div className="w-32 h-1 bg-white/50 rounded-full" />
+                </div>
+              </div>
+
+              <div className="text-center pt-2">
+                <p className="text-xs text-slate-500">
+                  Preview mirrors iOS & Android expanded rich push notification format.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
-    );
+
+        {/* Bottom Section: Recent Notification Broadcasts */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-6 md:p-8 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">Recent Broadcasts</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Past notification campaigns and real-time delivery status
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadData}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/70 rounded-lg transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh History
+            </button>
+          </div>
+
+          {isLoadingInitial ? (
+            <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-3">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+              <span className="text-xs font-medium">Loading campaign history...</span>
+            </div>
+          ) : campaigns.length === 0 ? (
+            <div className="py-12 text-center rounded-2xl border border-dashed border-slate-200 text-slate-400">
+              <p className="text-sm font-medium">No notification campaigns sent yet.</p>
+              <p className="text-xs mt-1">Compose and send your first push notification above!</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 text-slate-400 uppercase tracking-wider font-bold">
+                    <th className="pb-3 px-3">Date</th>
+                    <th className="pb-3 px-3">Campaign</th>
+                    <th className="pb-3 px-3">Target Apps</th>
+                    <th className="pb-3 px-3">Media</th>
+                    <th className="pb-3 px-3 text-center">Recipients</th>
+                    <th className="pb-3 px-3 text-center">Status</th>
+                    <th className="pb-3 px-3 text-right">Receipts</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                  {campaigns.map((camp) => {
+                    const statusNormalized = String(camp.status || 'QUEUED').toUpperCase();
+                    const isSuccess =
+                      statusNormalized.includes('SENT') || statusNormalized.includes('CHECKED');
+                    const isFailed = statusNormalized.includes('FAILED');
+
+                    return (
+                      <tr key={camp.id || camp.campaignCode} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">
+                          {camp.createdAt
+                            ? new Date(camp.createdAt).toLocaleDateString('en-IN', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '-'}
+                        </td>
+                        <td className="py-3.5 px-3 max-w-xs">
+                          <div className="font-bold text-slate-900 truncate">
+                            {camp.title || 'Untitled Notification'}
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                            {camp.campaignCode || camp.id}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-3">
+                          <div className="flex flex-wrap gap-1">
+                            {(camp.targetApps || []).map((appKey) => {
+                              const meta = APP_METADATA[appKey];
+                              return (
+                                <span
+                                  key={appKey}
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700"
+                                >
+                                  {meta?.name?.replace('SquarFT ', '') || appKey}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-3">
+                          {camp.imageUrl ? (
+                            <a
+                              href={camp.imageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-block relative group"
+                              title="View Attached Image"
+                            >
+                              <img
+                                src={camp.imageUrl}
+                                alt="thumb"
+                                className="w-9 h-9 object-cover rounded-lg border border-slate-200"
+                              />
+                            </a>
+                          ) : (
+                            <span className="text-slate-300 text-[11px]">No image</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-3 text-center">
+                          <span className="font-semibold text-slate-900">
+                            {camp.sentCount ?? camp.totalTokens ?? 0}
+                          </span>
+                          <span className="text-slate-400 text-[10px] block">delivered</span>
+                        </td>
+                        <td className="py-3.5 px-3 text-center">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                              isSuccess
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : isFailed
+                                ? 'bg-red-50 text-red-700 border border-red-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}
+                          >
+                            {statusNormalized}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleSyncReceipts(camp.id)}
+                            disabled={syncingId === camp.id}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            {syncingId === camp.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-3 h-3" />
+                            )}
+                            Sync
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
 };
-
-const MetricTile = ({ icon: Icon, label, value }) => (
-    <div className="rounded-[10px] border border-[#D8D2EB] bg-[#FCFBFF] p-3">
-        <Icon className="h-4 w-4 text-[#2717D7]" />
-        <p className="mt-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#7B7486]">{label}</p>
-        <p className="mt-1 text-lg font-black text-[#171327]">{value}</p>
-    </div>
-);
-
-const MiniStat = ({ label, value }) => (
-    <div className="min-w-0 rounded-[7px] bg-white p-2 ring-1 ring-[#E1DDF0]">
-        <p className="text-[8px] font-black uppercase text-[#8B8498]">{label}</p>
-        <p className="mt-1 truncate text-[10px] font-black text-[#171327]">{value}</p>
-    </div>
-);
-
-const SectionHeader = ({ icon: Icon, title, helper }) => (
-    <div className="flex items-start justify-between gap-4 border-b border-[#E1DDF0] pb-4">
-        <div>
-            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#5E5A71]">{title}</p>
-            <p className="mt-1 text-sm font-medium text-[#615C71]">{helper}</p>
-        </div>
-        <div className="grid h-10 w-10 place-items-center rounded-[8px] bg-[#F0EDFF] text-[#2717D7]">
-            <Icon size={19} />
-        </div>
-    </div>
-);
-
-const Field = ({ label, value, onChange, placeholder }) => (
-    <label className="block">
-        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#6B657A]">{label}</span>
-        <input
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            placeholder={placeholder}
-            className="mt-1 h-11 w-full rounded-[8px] border border-[#D8D2EB] bg-[#FCFBFF] px-3 text-sm font-medium outline-none focus:ring-2 focus:ring-[#2717D7]/20"
-        />
-    </label>
-);
-
-const SelectField = ({ label, value, onChange, options }) => (
-    <label className="block">
-        <span className="text-[10px] font-black uppercase tracking-[0.12em] text-[#6B657A]">{label}</span>
-        <select
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            className="mt-1 h-11 w-full rounded-[8px] border border-[#D8D2EB] bg-[#FCFBFF] px-3 text-sm font-black outline-none focus:ring-2 focus:ring-[#2717D7]/20"
-        >
-            {options.map((option) => (
-                <option key={option || 'none'} value={option}>{option || 'none'}</option>
-            ))}
-        </select>
-    </label>
-);
 
 export default NotificationCenter;
