@@ -112,7 +112,6 @@ const matchesProjectFilters = (project, filters) => {
     return matchesSearch && matchesPriceRange && matchesLocation;
 };
 
-const DEFAULT_PROJECT_IMAGE = '/inventory-images/project-main.png';
 const DEFAULT_FLOOR_PLAN_IMAGE = '/floor-plans/building-naksha.png';
 
 const PROPERTY_TYPE_HIERARCHY = [
@@ -233,7 +232,7 @@ const getProjectMeta = (project) => {
         ? galleryImages
         : project.coverImageUrl
             ? [project.coverImageUrl]
-            : [DEFAULT_PROJECT_IMAGE];
+            : [];
 
     return { reraNumber, possession, avgPrice, amenities, images };
 };
@@ -306,24 +305,32 @@ const ImageLightbox = ({ images, startIndex = 0, alt = 'Project image', onClose 
 
 const ProjectImageStrip = ({ project, className = 'h-44' }) => {
     const { images } = getProjectMeta(project);
-    const mainImage = images[0] || DEFAULT_PROJECT_IMAGE;
+    const mainImage = images[0];
     const extraCount = images.length - 1;
     const [lightboxOpen, setLightboxOpen] = useState(false);
+    const [imageFailed, setImageFailed] = useState(false);
 
     const openLightbox = (e) => {
         e.stopPropagation();
-        setLightboxOpen(true);
+        if (mainImage && !imageFailed) setLightboxOpen(true);
     };
 
     return (
         <>
             <div
-                className={`${className} relative overflow-hidden bg-gray-100 cursor-pointer`}
+                className={`${className} relative overflow-hidden bg-gray-100 ${mainImage && !imageFailed ? 'cursor-pointer' : ''}`}
                 onClick={openLightbox}
             >
-                <img src={mainImage} alt={`${project.name} project view`} className="h-full w-full object-cover" />
+                {mainImage && !imageFailed ? (
+                    <img src={mainImage} alt={`${project.name} project view`} className="h-full w-full object-cover" onError={() => setImageFailed(true)} />
+                ) : (
+                    <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-slate-100 text-slate-400">
+                        <Images className="w-7 h-7" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">No image uploaded</span>
+                    </div>
+                )}
 
-                {extraCount > 0 && (
+                {extraCount > 0 && !imageFailed && (
                     <button
                         type="button"
                         onClick={openLightbox}

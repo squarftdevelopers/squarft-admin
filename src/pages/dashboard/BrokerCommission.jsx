@@ -2,18 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Banknote,
     Building2,
+    Check,
     CheckCircle2,
     ChevronRight,
     ClipboardList,
     Clock3,
+    Copy,
     CreditCard,
     FileText,
+    Loader2,
     MapPin,
     Search,
     UserRound,
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
-import BrokerWithdrawalPayments from '../../components/BrokerWithdrawalPayments';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../../components/ui/Modal';
 import samplePropertyImage from '../../assets/login-bg.png';
@@ -85,6 +87,15 @@ const BrokerCommission = () => {
     const [loadedBrokerDetails, setLoadedBrokerDetails] = useState({});
     const [actionLoading, setActionLoading] = useState(null);
     const [pageError, setPageError] = useState('');
+    const [paymentRef, setPaymentRef] = useState('');
+    const [copiedField, setCopiedField] = useState(null);
+
+    const handleCopy = (text, fieldName) => {
+        if (!text) return;
+        navigator.clipboard.writeText(String(text));
+        setCopiedField(fieldName);
+        setTimeout(() => setCopiedField(null), 2000);
+    };
 
     const mergeBroker = useCallback((broker) => {
         if (!broker?.id) return;
@@ -227,8 +238,9 @@ const BrokerCommission = () => {
         setPageError('');
 
         try {
-            const transaction = await approveBrokerTransaction(selectedBroker.id, transactionId);
+            const transaction = await approveBrokerTransaction(selectedBroker.id, transactionId, paymentRef.trim());
             applyTransactionUpdate(transaction);
+            setPaymentRef('');
             await loadBrokerDetail(selectedBroker.id);
         } catch (error) {
             console.error('Failed to approve broker transaction:', error);
@@ -268,8 +280,6 @@ const BrokerCommission = () => {
     return (
         <div className="flex h-full flex-1 flex-col bg-[#F5F6FA] text-[#15121F]">
             <Header title="Broker" />
-
-            <BrokerWithdrawalPayments />
 
             <main className="flex-1 overflow-y-auto overflow-x-hidden p-4">
                 <div className="mx-auto max-w-[1600px] min-w-0 space-y-4">
@@ -677,68 +687,217 @@ const BrokerCommission = () => {
                                     </div>
 
                                     <aside className="min-w-0 rounded-[8px] border border-[#D8D2EB] bg-white p-4 2xl:sticky 2xl:top-4 2xl:self-start">
-                                        {selectedTransaction ? (
-                                            <div className="space-y-4">
+                                        {!selectedTransaction ? (
+                                            <div className="py-10 text-center">
+                                                <CreditCard className="mx-auto h-6 w-6 text-[#A9A2B5]" />
+                                                <p className="mt-2 text-xs font-black text-[#171327]">No transaction selected</p>
+                                                <p className="mt-1 text-[10px] font-bold text-[#615C71]">Choose a transaction to review it.</p>
+                                            </div>
+                                        ) : selectedTransaction.type === 'credit' ? (
+                                            // ── Credit / Commission record ──────────────────
+                                            <div className="space-y-3">
                                                 <div className="border-b border-[#E1DDF0] pb-3">
-                                                    <p className="text-[10px] font-black uppercase tracking-wider text-[#2717D7]">Selected transaction</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-[#2717D7]">Commission record</p>
                                                     <h3 className="mt-1 text-sm font-black text-[#171327]">{getTransactionLabel(selectedTransaction)}</h3>
                                                     <p className="mt-0.5 text-[10px] font-bold text-[#615C71]">{selectedTransaction.id}</p>
                                                 </div>
-
-                                                <div className="rounded-[8px] bg-[#FCFBFF] p-3 text-center ring-1 ring-[#E1DDF0]">
-                                                    <p className={selectedTransaction.type === 'credit' ? 'text-xl font-black text-[#0C6B39]' : 'text-xl font-black text-[#B42318]'}>
-                                                        {selectedTransaction.type === 'credit' ? '+' : '-'} {formatCurrency(selectedTransaction.amount)}
-                                                    </p>
-                                                    <div className="mt-2 flex justify-center">
-                                                        <StatusPill status={getTransactionStatus(selectedTransaction)} />
-                                                    </div>
+                                                <div className="rounded-[8px] bg-[#E8F9EE] p-3 text-center ring-1 ring-[#B7E5C8]">
+                                                    <p className="text-xl font-black text-[#0C6B39]">+ {formatCurrency(selectedTransaction.amount)}</p>
+                                                    <p className="mt-1 text-[9px] font-black uppercase tracking-wider text-[#0C6B39]">Commission credited</p>
                                                 </div>
-
                                                 <div className="space-y-2 text-xs">
                                                     <div className="rounded-[6px] border border-[#E1DDF0] p-2.5">
-                                                        <p className="text-[8px] font-black uppercase tracking-wider text-[#8B8498]">Bank</p>
-                                                        <p className="mt-0.5 break-words font-bold text-[#171327]">{selectedTransaction.bank_name}</p>
+                                                        <p className="text-[8px] font-black uppercase tracking-wider text-[#8B8498]">Property</p>
+                                                        <p className="mt-0.5 break-words font-bold text-[#171327]">{selectedTransaction.property_name || 'N/A'}</p>
                                                     </div>
                                                     <div className="rounded-[6px] border border-[#E1DDF0] p-2.5">
                                                         <p className="text-[8px] font-black uppercase tracking-wider text-[#8B8498]">Date</p>
                                                         <p className="mt-0.5 font-bold text-[#171327]">{selectedTransaction.created_at}</p>
                                                     </div>
-                                                    <div className="rounded-[6px] border border-[#E1DDF0] p-2.5">
-                                                        <p className="text-[8px] font-black uppercase tracking-wider text-[#8B8498]">UTR</p>
-                                                        <p className="mt-0.5 break-all font-bold text-[#171327]">{getTransactionUtr(selectedTransaction)}</p>
+                                                    <div className="rounded-[6px] border border-[#E1DDF0] bg-[#FCFBFF] p-2.5">
+                                                        <p className="text-[10px] font-bold text-[#615C71]">Commission records are auto-credited on deal close and do not require manual approval.</p>
                                                     </div>
-                                                </div>
-
-                                                <div className="flex flex-col gap-2 border-t border-[#E1DDF0] pt-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => approveTransaction(selectedTransaction.id)}
-                                                        disabled={!canApproveSelectedTransaction}
-                                                        className="min-h-9 rounded-[6px] bg-[#2717D7] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-white transition-colors hover:bg-[#1f11ab] disabled:cursor-not-allowed disabled:bg-[#C5BEDD]"
-                                                    >
-                                                        {actionLoading === `approve-${selectedTransaction.id}` ? 'Approving...' : 'Approve'}
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => confirmTransaction(selectedTransaction.id)}
-                                                        disabled={!canConfirmSelectedTransaction}
-                                                        className="inline-flex min-h-9 items-center justify-center gap-1 rounded-[6px] border border-[#B7E5C8] bg-[#E8F9EE] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-[#0C6B39] transition-colors hover:bg-[#DDF4E7] disabled:cursor-not-allowed disabled:border-[#E1DDF0] disabled:bg-white disabled:text-[#A9A2B5]"
-                                                    >
-                                                        <CheckCircle2 size={12} /> {actionLoading === `confirm-${selectedTransaction.id}` ? 'Confirming...' : 'Confirm'}
-                                                    </button>
-                                                    {selectedTransaction.type !== 'debit' && (
-                                                        <p className="text-[10px] font-bold text-[#615C71]">Credit transactions are commission records and cannot be approved from withdrawal review.</p>
-                                                    )}
-                                                    {selectedTransactionIsFinal && (
-                                                        <p className="text-[10px] font-bold text-[#0C6B39]">This payout is already settled.</p>
-                                                    )}
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="py-8 text-center">
-                                                <CreditCard className="mx-auto h-6 w-6 text-[#A9A2B5]" />
-                                                <p className="mt-2 text-xs font-black text-[#171327]">No transaction selected</p>
-                                                <p className="mt-1 text-[10px] font-bold text-[#615C71]">Choose a transaction to review it.</p>
+                                            // ── Debit / Withdrawal ──────────────────────────
+                                            <div className="space-y-4">
+                                                <div className="border-b border-[#E1DDF0] pb-3">
+                                                    <p className="text-[10px] font-black uppercase tracking-wider text-[#2717D7]">Withdrawal request</p>
+                                                    <h3 className="mt-1 text-sm font-black text-[#171327]">Bank payout</h3>
+                                                    <p className="mt-0.5 text-[10px] font-bold text-[#615C71]">{selectedTransaction.id}</p>
+                                                </div>
+
+                                                {/* Amount */}
+                                                <div className="rounded-[8px] bg-[#FCFBFF] p-3 text-center ring-1 ring-[#E1DDF0]">
+                                                    <p className="text-xl font-black text-[#B42318]">- {formatCurrency(selectedTransaction.amount)}</p>
+                                                    <div className="mt-2 flex justify-center">
+                                                        <StatusPill status={getTransactionStatus(selectedTransaction)} />
+                                                    </div>
+                                                </div>
+
+                                                {/* Bank payout details */}
+                                                <div className="rounded-[8px] border border-[#2717D7]/25 bg-[#F8F7FF] p-3 space-y-2">
+                                                    <div className="flex items-center justify-between border-b border-[#E1DDF0] pb-1.5">
+                                                        <p className="text-[9px] font-black uppercase tracking-wider text-[#2717D7]">Pay to Broker's Bank Account</p>
+                                                        <span className="text-[8px] font-bold text-[#615C71]">Payout details</span>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between text-xs py-0.5">
+                                                        <span className="text-[9px] font-bold text-[#615C71]">Beneficiary</span>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-bold text-[#171327]">{selectedBroker.name}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleCopy(selectedBroker.name, 'name')}
+                                                                title="Copy Name"
+                                                                className="text-[#7B7486] hover:text-[#2717D7]"
+                                                            >
+                                                                {copiedField === 'name' ? <Check size={11} className="text-[#0C6B39]" /> : <Copy size={11} />}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between text-xs py-0.5">
+                                                        <span className="text-[9px] font-bold text-[#615C71]">Bank</span>
+                                                        <span className="font-bold text-[#171327]">{selectedTransaction.bank_name || selectedBroker.bankAccounts[0]?.bankName || '—'}</span>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between text-xs py-0.5">
+                                                        <span className="text-[9px] font-bold text-[#615C71]">Account No.</span>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-mono font-bold text-[#171327] text-[11px]">
+                                                                {selectedTransaction.account_number || selectedBroker.bankAccounts[0]?.accountNumber || selectedTransaction.account_number_masked || '—'}
+                                                            </span>
+                                                            {(selectedTransaction.account_number || selectedBroker.bankAccounts[0]?.accountNumber) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleCopy(selectedTransaction.account_number || selectedBroker.bankAccounts[0]?.accountNumber, 'acc')}
+                                                                    title="Copy Account Number"
+                                                                    className="text-[#7B7486] hover:text-[#2717D7]"
+                                                                >
+                                                                    {copiedField === 'acc' ? <Check size={11} className="text-[#0C6B39]" /> : <Copy size={11} />}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between text-xs py-0.5">
+                                                        <span className="text-[9px] font-bold text-[#615C71]">IFSC Code</span>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-mono font-bold text-[#171327] text-[11px]">
+                                                                {selectedTransaction.ifsc_code || selectedBroker.bankAccounts[0]?.ifsc || '—'}
+                                                            </span>
+                                                            {(selectedTransaction.ifsc_code || selectedBroker.bankAccounts[0]?.ifsc) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleCopy(selectedTransaction.ifsc_code || selectedBroker.bankAccounts[0]?.ifsc, 'ifsc')}
+                                                                    title="Copy IFSC Code"
+                                                                    className="text-[#7B7486] hover:text-[#2717D7]"
+                                                                >
+                                                                    {copiedField === 'ifsc' ? <Check size={11} className="text-[#0C6B39]" /> : <Copy size={11} />}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between text-xs py-0.5 border-t border-[#E1DDF0]/60 pt-1.5">
+                                                        <span className="text-[9px] font-bold text-[#615C71]">Date</span>
+                                                        <span className="font-bold text-[#171327]">{selectedTransaction.created_at}</span>
+                                                    </div>
+
+                                                    {getTransactionUtr(selectedTransaction) !== 'Not assigned' && (
+                                                        <div className="flex items-center justify-between text-xs py-0.5">
+                                                            <span className="text-[9px] font-bold text-[#615C71]">UTR / Ref</span>
+                                                            <span className="font-mono font-bold text-[#171327] text-[10px] break-all">{getTransactionUtr(selectedTransaction)}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Action area */}
+                                                <div className="border-t border-[#E1DDF0] pt-3 space-y-3">
+                                                    {selectedTransactionIsFinal ? (
+                                                        // Already settled
+                                                        <div className="rounded-[8px] bg-[#E8F9EE] p-3 text-center ring-1 ring-[#B7E5C8]">
+                                                            <CheckCircle2 className="mx-auto h-5 w-5 text-[#0C6B39]" />
+                                                            <p className="mt-1.5 text-xs font-black text-[#0C6B39]">Payout settled</p>
+                                                            <p className="mt-0.5 text-[10px] font-bold text-[#0C6B39]">Money transferred to bank account.</p>
+                                                            {getTransactionUtr(selectedTransaction) !== 'Not assigned' && (
+                                                                <p className="mt-1 font-mono text-[9px] font-bold text-[#0C6B39]">UTR: {getTransactionUtr(selectedTransaction)}</p>
+                                                            )}
+                                                        </div>
+                                                    ) : canApproveSelectedTransaction ? (
+                                                        // Step 1 — Pending: enter payment ref and approve
+                                                        <>
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-1.5">
+                                                                    <p className="text-[9px] font-black uppercase tracking-wider text-[#5E5A71]">Step 1 — Mark payment done</p>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setPaymentRef(`UTR-${Date.now().toString().slice(-8)}`)}
+                                                                        className="text-[9px] font-black uppercase tracking-wider text-[#2717D7] hover:underline"
+                                                                    >
+                                                                        Auto-fill UTR
+                                                                    </button>
+                                                                </div>
+                                                                <p className="mb-2 text-[10px] font-medium text-[#615C71]">Pay real money to the bank account above, enter the UTR/bank reference, and approve.</p>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Enter UTR / payment reference"
+                                                                    value={paymentRef}
+                                                                    onChange={(e) => setPaymentRef(e.target.value)}
+                                                                    className="w-full rounded-[6px] border border-[#D8D2EB] bg-[#FCFBFF] px-3 py-2 text-xs font-bold text-[#171327] outline-none focus:border-[#2717D7] focus:ring-1 focus:ring-[#2717D7]"
+                                                                />
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => approveTransaction(selectedTransaction.id)}
+                                                                disabled={!!actionLoading}
+                                                                className="flex items-center justify-center gap-1.5 w-full min-h-10 rounded-[6px] bg-[#2717D7] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-white transition-colors hover:bg-[#1f11ab] disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                {actionLoading === `approve-${selectedTransaction.id}` ? (
+                                                                    <>
+                                                                        <Loader2 size={13} className="animate-spin" />
+                                                                        <span>Processing…</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <span>Approve & Mark Paid</span>
+                                                                )}
+                                                            </button>
+                                                        </>
+                                                    ) : canConfirmSelectedTransaction ? (
+                                                        // Step 2 — Approved: confirm final settlement
+                                                        <>
+                                                            <div className="rounded-[6px] border border-[#FDE68A] bg-[#FFFBEB] p-2.5">
+                                                                <p className="text-[9px] font-black uppercase tracking-wider text-[#A15A00]">Step 2 — Confirm settlement</p>
+                                                                <p className="mt-1 text-[10px] font-medium text-[#A15A00]">Payment approved. Confirm to finalize and close this withdrawal.</p>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => confirmTransaction(selectedTransaction.id)}
+                                                                disabled={!!actionLoading}
+                                                                className="inline-flex w-full min-h-10 items-center justify-center gap-1.5 rounded-[6px] border border-[#B7E5C8] bg-[#E8F9EE] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-[#0C6B39] transition-colors hover:bg-[#DDF4E7] disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                {actionLoading === `confirm-${selectedTransaction.id}` ? (
+                                                                    <>
+                                                                        <Loader2 size={13} className="animate-spin" />
+                                                                        <span>Confirming…</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <CheckCircle2 size={13} />
+                                                                        <span>Confirm Payout Done</span>
+                                                                    </>
+                                                                )}
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        // Some intermediate/unexpected status
+                                                        <div className="rounded-[6px] border border-[#E1DDF0] bg-[#FCFBFF] p-2.5 text-center">
+                                                            <p className="text-[10px] font-bold text-[#615C71]">Status: <span className="text-[#171327]">{getTransactionStatus(selectedTransaction)}</span></p>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         )}
                                     </aside>

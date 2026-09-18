@@ -50,10 +50,14 @@ export const normalizeBrokerTransaction = (transaction = {}) => ({
   property_name: transaction.property_name || transaction.propertyName || transaction.transfer_to_details || 'Wallet transaction',
   type: String(transaction.type || '').toLowerCase(),
   amount: asNumber(transaction.amount),
-  bank_name: transaction.bank_name || transaction.transfer_to_details || 'Wallet balance',
+  bank_name: transaction.bank_name || transaction.bank_title || transaction.transfer_to_details || 'Wallet balance',
+  account_number: transaction.account_number || transaction.accountNumber || transaction.account_number_masked || '',
+  account_number_masked: transaction.account_number_masked || '',
+  ifsc_code: transaction.ifsc_code || transaction.ifscCode || transaction.ifsc || '',
   created_at: formatDate(transaction.created_at || transaction.createdAt),
   status: titleCaseStatus(transaction.status),
   utr: transaction.utr || '',
+  is_withdrawal_request: Boolean(transaction.is_withdrawal_request),
 });
 
 export const normalizeBrokerCommission = (commission = {}) => ({
@@ -85,6 +89,7 @@ export const normalizeBrokerAccount = (account = {}) => ({
   id: account.id,
   bankName: account.bankName || account.bank_name || 'Bank account',
   accountNumberMasked: account.accountNumberMasked || account.account_number_masked || 'xxxx',
+  accountNumber: account.accountNumber || account.account_number || account.accountNumberMasked || account.account_number_masked || 'xxxx',
   ifsc: account.ifsc || account.ifsc_code || '-',
   primary: Boolean(account.primary ?? account.is_default),
   status: titleCaseStatus(account.status, 'Verified'),
@@ -169,16 +174,17 @@ export const fetchBrokerDetail = async (brokerId) => {
   });
 };
 
-export const approveBrokerTransaction = async (brokerId, transactionId) => {
+export const approveBrokerTransaction = async (brokerId, transactionId, paymentReference = '') => {
+  const body = paymentReference ? JSON.stringify({ utr: paymentReference }) : undefined;
   const transaction = unwrapData(await apiRequest(
     `${ADMIN_BROKERS_BASE}/${brokerId}/transactions/${transactionId}/approve`,
-    { method: 'PATCH' },
+    { method: 'PATCH', ...(body ? { body } : {}) },
   ));
 
   return {
     id: transaction?.id,
     status: titleCaseStatus(transaction?.status),
-    utr: transaction?.utr || '',
+    utr: transaction?.utr || paymentReference || '',
   };
 };
 
