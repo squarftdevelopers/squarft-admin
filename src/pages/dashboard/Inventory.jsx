@@ -349,6 +349,7 @@ const ProjectImageStrip = ({ project, className = 'h-44' }) => {
 const ProjectInventoryCard = ({ project, onOpen, onToggleFeatured, featuredUpdating = false }) => {
     const meta = getProjectMeta(project);
     const counts = getInventoryCounts(project);
+    const isBrokerProperty = project.itemType === 'property';
 
     return (
         <Card noPadding className="group hover:border-[#6F4BFF]/40 hover:shadow-xl transition-all flex flex-col h-full overflow-hidden border-gray-200">
@@ -364,6 +365,12 @@ const ProjectInventoryCard = ({ project, onOpen, onToggleFeatured, featuredUpdat
                 <p className="text-sm text-gray-500 font-bold flex items-center gap-1.5 mb-3">
                     <MapPin className="w-4 h-4 text-gray-400 shrink-0" /> {project.location}
                 </p>
+                {isBrokerProperty && (
+                    <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-violet-500">Parent project</p>
+                        <p className="mt-0.5 text-sm font-black text-violet-950">{project.parentProjectName || 'Project'}</p>
+                    </div>
+                )}
 
                 <div className="mb-4 flex flex-wrap items-center gap-2">
                     <button
@@ -438,6 +445,11 @@ const ProjectInventoryCard = ({ project, onOpen, onToggleFeatured, featuredUpdat
                         ))}
                     </div>
                 </div>
+                {isBrokerProperty && (
+                    <Button variant="secondary" size="sm" className="mt-4 w-full font-black uppercase tracking-widest text-xs" onClick={() => onOpen(project)}>
+                        Open Parent Project
+                    </Button>
+                )}
             </div>
         </Card>
     );
@@ -532,7 +544,7 @@ const Inventory = () => {
     };
 
     const handleProjectClick = (project) => {
-        dispatch(getProjectById(project.id));
+        dispatch(getProjectById(project.parentProjectId || project.id));
     };
 
     const handleToggleFeatured = (project) => {
@@ -2307,7 +2319,7 @@ const BuilderProjectsView = ({ builder, onBack, profileType = 'builder' }) => {
     });
 
     const handleProjectClick = (project) => {
-        dispatch(getProjectById(project.id));
+        dispatch(getProjectById(project.parentProjectId || project.id));
     };
 
     const handleToggleFeatured = (project) => {
@@ -2512,7 +2524,7 @@ const BuilderProjectsView = ({ builder, onBack, profileType = 'builder' }) => {
                             </div>
                         </div>
 
-                        {/* Project Cards Grid */}
+                        {/* Broker rows are individual properties; builder rows remain projects. */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
                             {filteredBuilderProjects.map((p, i) => (
                                 <ProjectInventoryCard
