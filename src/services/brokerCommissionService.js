@@ -80,9 +80,12 @@ export const normalizeBrokerProperty = (property = {}) => ({
   location: property.location || property.address || '-',
   price: asNumber(property.price),
   status: titleCaseStatus(property.status),
-  photos: asNumber(property.photos || property.photo_count),
-  documents: asNumber(property.documents || property.document_count),
+  rawStatus: String(property.status || '').toLowerCase(),
+  photos: asNumber(property.photos ?? property.photo_count),
+  documents: asNumber(property.documents ?? property.document_count),
   uploadedOn: formatDate(property.uploaded_on || property.uploadedOn || property.created_at),
+  projectId: property.project_id || property.projectId || null,
+  projectName: property.project_name || property.projectName || '',
 });
 
 export const normalizeBrokerAccount = (account = {}) => ({
@@ -199,4 +202,22 @@ export const confirmBrokerTransaction = async (brokerId, transactionId) => {
     status: titleCaseStatus(transaction?.status, 'Confirmed'),
     utr: transaction?.utr || undefined,
   };
+};
+
+export const updateBrokerPropertyStatus = async (brokerId, propertyId, status, reason = '') => {
+  return apiRequest(
+    `${ADMIN_BROKERS_BASE}/${brokerId}/properties/${propertyId}/status`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status, reason }),
+    },
+  );
+};
+
+export const approveBrokerProperty = async (brokerId, propertyId) => {
+  return updateBrokerPropertyStatus(brokerId, propertyId, 'approved');
+};
+
+export const rejectBrokerProperty = async (brokerId, propertyId, reason = '') => {
+  return updateBrokerPropertyStatus(brokerId, propertyId, 'rejected', reason);
 };

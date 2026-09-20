@@ -20,11 +20,13 @@ import { useNavigate } from 'react-router-dom';
 import Modal from '../../components/ui/Modal';
 import samplePropertyImage from '../../assets/login-bg.png';
 import {
+    approveBrokerProperty,
     approveBrokerTransaction,
     confirmBrokerTransaction,
     fetchBrokerDetail,
     fetchBrokerList,
     fetchBrokerSummary,
+    rejectBrokerProperty,
 } from '../../services/brokerCommissionService';
 
 const EMPTY_BROKER = {
@@ -197,7 +199,11 @@ const BrokerCommission = () => {
     }, [search]);
 
     const selectedBroker = brokers.find((broker) => broker.id === selectedBrokerId) || brokers[0] || EMPTY_BROKER;
-    const selectedProperties = selectedBroker.uploadedProperties.filter((property) => propertyFilter === 'All' || property.status === propertyFilter);
+    const normalizeFilter = (s) => String(s || '').replace(/_/g, ' ').trim().toLowerCase();
+    const selectedProperties = selectedBroker.uploadedProperties.filter((property) => {
+        if (propertyFilter === 'All') return true;
+        return normalizeFilter(property.status) === normalizeFilter(propertyFilter);
+    });
     const selectedTransaction = selectedBroker.transactions.find((transaction) => transaction.id === selectedTransactionId) || selectedBroker.transactions[0];
     const getTransactionStatus = (transaction) => transaction?.status || 'Pending';
     const getTransactionUtr = (transaction) => transaction?.utr || 'Not assigned';
@@ -258,6 +264,46 @@ const BrokerCommission = () => {
         && isApprovedStatus(selectedTransactionStatus)
         && !actionLoading;
     const selectedTransactionIsFinal = isConfirmedStatus(selectedTransactionStatus);
+
+    const handleApproveProperty = async (propertyId) => {
+        if (!selectedBroker?.id || !propertyId) return;
+        setActionLoading(`approve-property-${propertyId}`);
+        setPageError('');
+
+        try {
+            await approveBrokerProperty(selectedBroker.id, propertyId);
+            await loadBrokerDetail(selectedBroker.id);
+            if (selectedPropertyDetails?.id === propertyId) {
+                setSelectedPropertyDetails((prev) => prev ? { ...prev, status: 'Published' } : null);
+            }
+        } catch (error) {
+            console.error('Failed to approve property:', error);
+            setPageError(error?.message || 'Failed to approve property.');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleRejectProperty = async (propertyId) => {
+        if (!selectedBroker?.id || !propertyId) return;
+        const reason = window.prompt('Enter rejection reason for this property:');
+        if (reason === null) return;
+        setActionLoading(`reject-property-${propertyId}`);
+        setPageError('');
+
+        try {
+            await rejectBrokerProperty(selectedBroker.id, propertyId, reason.trim());
+            await loadBrokerDetail(selectedBroker.id);
+            if (selectedPropertyDetails?.id === propertyId) {
+                setSelectedPropertyDetails((prev) => prev ? { ...prev, status: 'Rejected' } : null);
+            }
+        } catch (error) {
+            console.error('Failed to reject property:', error);
+            setPageError(error?.message || 'Failed to reject property.');
+        } finally {
+            setActionLoading(null);
+        }
+    };
 
     const confirmTransaction = async (transactionId) => {
         setActionLoading(`confirm-${transactionId}`);
@@ -472,13 +518,33 @@ const BrokerCommission = () => {
                                                                 )}
                                                                 <div className="mt-2.5 flex items-center justify-between border-t border-dashed border-[#E1DDF0]/50 pt-2">
                                                                     <p className="text-[8px] font-bold uppercase tracking-[0.1em] text-[#8B8498]">Uploaded {property.uploadedOn}</p>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setSelectedPropertyDetails(property)}
-                                                                        className="rounded bg-[#2717D7] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white transition-colors hover:bg-[#1f11ab]"
-                                                                    >
-                                                                        View Details
-                                                                    </button>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        {property.status === 'Pending Review' && (
+                                                                            <button
+                                                                                type="button"
+                                                                                disabled={!!actionLoading}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleApproveProperty(property.id);
+                                                                                }}
+                                                                                className="flex items-center gap-1 rounded bg-[#0C6B39] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white transition-colors hover:bg-[#09522c] disabled:opacity-60"
+                                                                            >
+                                                                                {actionLoading === `approve-property-${property.id}` ? (
+                                                                                    <Loader2 size={10} className="animate-spin" />
+                                                                                ) : (
+                                                                                    <Check size={10} />
+                                                                                )}
+                                                                                Approve
+                                                                            </button>
+                                                                        )}
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => setSelectedPropertyDetails(property)}
+                                                                            className="rounded bg-[#2717D7] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white transition-colors hover:bg-[#1f11ab]"
+                                                                        >
+                                                                            View Details
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -913,6 +979,9 @@ const BrokerCommission = () => {
                 selectedBroker={selectedBroker}
                 isOpen={!!selectedPropertyDetails}
                 onClose={() => setSelectedPropertyDetails(null)}
+                onApprove={handleApproveProperty}
+                onReject={handleRejectProperty}
+                actionLoading={actionLoading}
             />
         </div>
     );
@@ -951,7 +1020,7 @@ const StatusPill = ({ status }) => (
     </span>
 );
 
-const BrokerPropertyDetailsModal = ({ property, selectedBroker, isOpen, onClose }) => {
+const BrokerPropertyDetailsModal = ({ property, selectedBroker, isOpen, onClose, onApprove, onReject, actionLoading }) => {
     if (!property) return null;
 
     const projectDetails = {
@@ -995,6 +1064,37 @@ const BrokerPropertyDetailsModal = ({ property, selectedBroker, isOpen, onClose 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`${projectDetails.name} - Full Property Details`} size="xl">
             <div className="space-y-6">
+                {property.status === 'Pending Review' && (
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-4">
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-wider text-[#A15A00]">Action Required</p>
+                            <p className="text-xs font-semibold text-[#78350F] mt-0.5">This property is pending review. Approving will publish it and attach it to the parent project inventory.</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                disabled={!!actionLoading}
+                                onClick={() => onApprove && onApprove(property.id)}
+                                className="flex items-center gap-1.5 rounded-lg bg-[#0C6B39] px-4 py-2 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-[#09522c] disabled:opacity-60"
+                            >
+                                {actionLoading === `approve-property-${property.id}` ? (
+                                    <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                    <Check size={13} />
+                                )}
+                                Approve & Publish
+                            </button>
+                            <button
+                                type="button"
+                                disabled={!!actionLoading}
+                                onClick={() => onReject && onReject(property.id)}
+                                className="rounded-lg border border-[#F5C2C2] bg-[#FFF4F4] px-4 py-2 text-xs font-black uppercase tracking-wider text-[#B42318] transition-colors hover:bg-[#FDECEC] disabled:opacity-60"
+                            >
+                                Reject
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {/* Property Image Gallery */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div className="md:col-span-2 relative h-52 rounded-2xl overflow-hidden border border-[#E1DDF0]">
