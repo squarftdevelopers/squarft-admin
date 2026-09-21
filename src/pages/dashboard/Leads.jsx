@@ -1,4 +1,3 @@
-import SiteVisitLeads from '../../components/leads/SiteVisitLeads';
 import { useEffect, useMemo, useState } from 'react';
 import {
     Bot,
@@ -9,13 +8,13 @@ import {
     Phone,
     PhoneCall,
     RotateCcw,
+    Search,
     ShieldCheck,
     TrendingUp,
     UserRound,
     X,
 } from 'lucide-react';
 import Header from '../../components/layout/Header';
-import ProjectLeadPipeline from '../../components/leads/ProjectLeadPipeline';
 import { fetchMasterOptions } from '../../services/commonService';
 import {
     addManualSummary,
@@ -290,12 +289,15 @@ const escapeCsvValue = (value) => {
 };
 
 const Leads = () => {
-    const [pipelineView, setPipelineView] = useState('customer');
+    const pageSize = 20;
     const [leads, setLeads] = useState([]);
     const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [sourceFilter, setSourceFilter] = useState('All Sources');
     const [statusFilter, setStatusFilter] = useState('Any Status');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [page, setPage] = useState(1);
+    const [refreshVersion, setRefreshVersion] = useState(0);
     const [selectedLeadId, setSelectedLeadId] = useState(null);
     const [manualSummaryDraft, setManualSummaryDraft] = useState('');
     const [sourceOptions, setSourceOptions] = useState(fallbackSourceOptions);
@@ -305,6 +307,7 @@ const Leads = () => {
         let isMounted = true;
 
         const loadData = async () => {
+            setLoading(true);
             try {
                 const [optionsRes, leadsRes, summaryRes] = await Promise.allSettled([
                     fetchMasterOptions(['lead_sources', 'lead_temperatures']),
@@ -340,15 +343,32 @@ const Leads = () => {
         loadData();
 
         return () => { isMounted = false; };
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [refreshVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const visibleLeads = useMemo(() => (
         leads.filter((lead) => {
             const matchesSource = sourceFilter === 'All Sources' || lead.sourceType === sourceFilter;
             const matchesStatus = statusFilter === 'Any Status' || lead.status === statusFilter;
-            return matchesSource && matchesStatus;
+            const searchableText = [
+                lead.id,
+                lead.name,
+                lead.phone,
+                lead.sourceLabel,
+                lead.broker,
+                lead.requirement,
+                lead.budget,
+            ].filter(Boolean).join(' ').toLowerCase();
+            const matchesSearch = searchableText.includes(searchQuery.trim().toLowerCase());
+            return matchesSource && matchesStatus && matchesSearch;
         })
-    ), [leads, sourceFilter, statusFilter]);
+    ), [leads, searchQuery, sourceFilter, statusFilter]);
+
+    const totalPages = Math.max(1, Math.ceil(visibleLeads.length / pageSize));
+    const currentPage = Math.min(page, totalPages);
+    const paginatedLeads = useMemo(() => {
+        const firstItem = (currentPage - 1) * pageSize;
+        return visibleLeads.slice(firstItem, firstItem + pageSize);
+    }, [currentPage, visibleLeads]);
 
     const selectedLead = useMemo(() => (
         leads.find((lead) => lead.id === selectedLeadId) || null
@@ -441,14 +461,7 @@ const Leads = () => {
             <Header title="Leads Pipeline" />
 
             <main className="flex-1 overflow-y-auto p-6 md:p-8 scroll-smooth">
-                <div className="mx-auto mb-5 flex max-w-[1600px] gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
-                    <button type="button" onClick={() => setPipelineView('customer')} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-black transition ${pipelineView === 'customer' ? 'bg-[#4D3BFF] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>Customer Leads</button>
-                    <button type="button" onClick={() => setPipelineView('project')} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-black transition ${pipelineView === 'project' ? 'bg-[#4D3BFF] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>Project Leads</button>
-                </div>
-                {pipelineView === 'project' ? <div className="mx-auto max-w-[1600px]"><ProjectLeadPipeline /></div> : (
                 <div className="mx-auto max-w-[1600px] space-y-5">
-                    <SiteVisitLeads />
-                    <h2 className="text-lg font-bold text-slate-900">Other Customer Leads</h2>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                         {metrics.map((metric) => (
                             <MetricCard key={metric.label} {...metric} />
@@ -457,19 +470,43 @@ const Leads = () => {
 
                     <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
                         <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-[#CDCBE5] bg-white shadow-sm">
-                        <div className="flex flex-col gap-4 border-b border-[#D9D7EA] bg-[#F9F7FF] px-4 py-4 md:flex-row md:items-center md:justify-between">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
-                                <SelectFilter label="Filter" value={sourceFilter} options={sourceOptions} onChange={setSourceFilter} />
-                                <SelectFilter label="Status" value={statusFilter} options={statusOptions} onChange={setStatusFilter} />
+                        <div className="flex flex-col gap-4 border-b border-[#D9D7EA] bg-[#F9F7FF] px-4 py-4">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <label className="relative min-w-0 flex-1 lg:max-w-md">
+                                    <span className="sr-only">Search customer leads</span>
+                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="search"
+                                        value={searchQuery}
+                                        onChange={(event) => { setSearchQuery(event.target.value); setPage(1); }}
+                                        placeholder="Search name, phone, requirement or lead ID"
+                                        className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-xs font-semibold text-slate-950 outline-none transition placeholder:font-medium placeholder:text-slate-400 focus:border-[#4D3BFF] focus:ring-2 focus:ring-[#4D3BFF]/15"
+                                    />
+                                </label>
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+                                <SelectFilter label="Filter" value={sourceFilter} options={sourceOptions} onChange={(value) => { setSourceFilter(value); setPage(1); }} />
+                                <SelectFilter label="Status" value={statusFilter} options={statusOptions} onChange={(value) => { setStatusFilter(value); setPage(1); }} />
+                                </div>
                             </div>
-                            <button
-                                type="button"
-                                onClick={handleDownloadCsv}
-                                className="inline-flex items-center gap-2 text-sm font-black text-[#3630ff] transition hover:text-[#2017c9]"
-                            >
-                                <Download className="h-4 w-4" />
-                                Download CSV
-                            </button>
+                            <div className="flex items-center justify-end gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setRefreshVersion((version) => version + 1)}
+                                    disabled={loading}
+                                    className="inline-flex items-center gap-2 text-sm font-black text-slate-600 transition hover:text-[#3630ff] disabled:cursor-wait disabled:opacity-50"
+                                >
+                                    <RotateCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                                    Refresh
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleDownloadCsv}
+                                    className="inline-flex items-center gap-2 text-sm font-black text-[#3630ff] transition hover:text-[#2017c9]"
+                                >
+                                    <Download className="h-4 w-4" />
+                                    Download CSV
+                                </button>
+                            </div>
                         </div>
 
                         <div className="overflow-x-auto">
@@ -486,7 +523,7 @@ const Leads = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#E1E0EA]">
-                                    {visibleLeads.map((lead) => (
+                                    {paginatedLeads.map((lead) => (
                                         <tr
                                             key={lead.id}
                                             onClick={() => handleSelectLead(lead)}
@@ -552,6 +589,18 @@ const Leads = () => {
                                 {loading ? 'Loading leads...' : 'No leads match the selected filters.'}
                             </div>
                         )}
+                        {visibleLeads.length > 0 && (
+                            <div className="flex flex-col gap-3 border-t border-[#D9D7EA] px-5 py-4 text-xs font-bold text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+                                <span>
+                                    Showing {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, visibleLeads.length)} of {visibleLeads.length} leads
+                                </span>
+                                <div className="flex items-center gap-3">
+                                    <button type="button" disabled={currentPage <= 1 || loading} onClick={() => setPage((current) => current - 1)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 transition hover:border-[#4D3BFF]/50 hover:text-[#4D3BFF] disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                                    <span>Page {currentPage} of {totalPages}</span>
+                                    <button type="button" disabled={currentPage >= totalPages || loading} onClick={() => setPage((current) => current + 1)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 transition hover:border-[#4D3BFF]/50 hover:text-[#4D3BFF] disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+                                </div>
+                            </div>
+                        )}
                         </div>
 
                         <LeadDetailPanel
@@ -563,7 +612,6 @@ const Leads = () => {
                         />
                     </div>
                 </div>
-                )}
             </main>
         </div>
     );
