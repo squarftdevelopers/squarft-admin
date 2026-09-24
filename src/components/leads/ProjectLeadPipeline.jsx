@@ -178,7 +178,7 @@ const ActivityHistory = ({ lead }) => (
   </div>
 );
 
-export default function ProjectLeadPipeline() {
+export default function ProjectLeadPipeline({ officerId }) {
   const [leads, setLeads] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [stage, setStage] = useState("all");
@@ -225,7 +225,7 @@ export default function ProjectLeadPipeline() {
     try {
       setLoading(true);
       setError("");
-      const result = await fetchProjectLeads();
+      const result = await fetchProjectLeads({ officer_id: officerId });
       setLeads(result.leads);
       setSelectedId((current) =>
         current && result.leads.some((item) => item.id === current)
@@ -240,7 +240,7 @@ export default function ProjectLeadPipeline() {
   };
   useEffect(() => {
     let mounted = true;
-    fetchProjectLeads()
+    fetchProjectLeads({ officer_id: officerId })
       .then((result) => {
         if (!mounted) return;
         setLeads(result.leads);
@@ -256,7 +256,7 @@ export default function ProjectLeadPipeline() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [officerId]);
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -630,15 +630,6 @@ export default function ProjectLeadPipeline() {
                         >
                           {submittingStage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                           Approve & Make Project Live (Step 3)
-                        </button>
-                        <button
-                          type="button"
-                          disabled={submittingStage}
-                          onClick={() => handleTransitionStage("interested")}
-                          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white py-1.5 px-2.5 text-xs font-bold text-slate-600 shadow-xs hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
-                          Revert to Interested (Step 1)
                         </button>
                       </div>
                     ) : (

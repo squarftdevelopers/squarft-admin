@@ -27,6 +27,7 @@ import { useDialog } from '../../components/ui/Dialog';
 import {
     fetchPanelStats,
     fetchOnboardingProjects,
+    fetchProjectDevelopers,
     fetchProjectOnboardingDetails,
     decideProjectOnboarding,
     fetchLiveProjects,
@@ -74,6 +75,7 @@ const PanelMetricCard = ({ metric }) => (
 // Maps API project onboarding record to the shape expected by onboarding UI
 const mapOnboardingProject = (p) => ({
     id: p.id,
+    developerId: p.developer_id,
     projectName: p.project_name || 'Unnamed Project',
     builderName: p.builder_name || 'Unknown Builder',
     currentStep: p.step || 1,
@@ -691,7 +693,7 @@ const PanelOverview = () => {
     ];
 
     // Main layout tabs
-    const [activeTab, setActiveTab] = useState('project'); // 'project' | 'fieldOfficer'
+    const [activeTab, setActiveTab] = useState('fieldOfficer');
     const [activeProjectSubTab, setActiveProjectSubTab] = useState('onboardingProgress'); // 'onboardingProgress' | 'live' | 'rejected'
     const [activeOfficerSubTab, setActiveOfficerSubTab] = useState('projectLeads');
 
@@ -714,6 +716,8 @@ const PanelOverview = () => {
 
     // Onboarding projects state (API-driven)
     const [projectOnboarding, setProjectOnboarding] = useState([]);
+    const [projectDevelopers, setProjectDevelopers] = useState([]);
+    const [selectedProjectDeveloperId, setSelectedProjectDeveloperId] = useState('');
     const [draftedCount, setDraftedCount] = useState(0);
     const [doneCount, setDoneCount] = useState(0);
     const [onboardingLoading, setOnboardingLoading] = useState(false);
@@ -927,6 +931,18 @@ const PanelOverview = () => {
         }
     }, [projectOnboardTab]);
 
+    const loadProjectDevelopers = useCallback(async () => {
+        try {
+            const res = await fetchProjectDevelopers();
+            if (res?.success) {
+                setProjectDevelopers(res.data || []);
+                setSelectedProjectDeveloperId((current) => current || res.data?.[0]?.id || '');
+            }
+        } catch (e) {
+            console.error('Failed to load project developers', e);
+        }
+    }, []);
+
     const loadProjectOnboardDetails = useCallback(async (id) => {
         if (!id) return;
         try {
@@ -944,7 +960,28 @@ const PanelOverview = () => {
         try {
             setLiveLoading(true);
             const res = await fetchLiveProjects();
-            if (res?.success) setLiveProjects(res.data || []);
+            if (res?.success) {
+                setLiveProjects((res.data || []).map((project) => ({
+                    ...project,
+                    id: project.id,
+                    developerId: project.developer_id,
+                    projectName: project.project_name || project.name || 'Unnamed Project',
+                    builderName: project.builder_name || 'Unknown Builder',
+                    isLive: true,
+                    form: {
+                        step1: {
+                            location: project.location || '',
+                        },
+                        step2: {
+                            selectedTypes: (project.property_types || []).map((propertyType) => ({
+                                mainType: propertyType,
+                                subType: propertyType,
+                            })),
+                        },
+                    },
+                    lastUpdated: project.updated_at ? new Date(project.updated_at).toLocaleDateString('en-IN') : 'recently',
+                })));
+            }
         } catch (e) {
             console.error('Failed to load live projects', e);
         } finally {
@@ -956,7 +993,15 @@ const PanelOverview = () => {
         try {
             setRejectedLoading(true);
             const res = await fetchRejectedProjects();
-            if (res?.success) setRejectedProjects(res.data || []);
+            if (res?.success) setRejectedProjects((res.data || []).map((project) => ({
+                ...project,
+                developerId: project.developer_id,
+                projectName: project.project_name || project.name || 'Unnamed Project',
+                builderName: project.builder_name || 'Unknown Builder',
+                isRejected: true,
+                rejectionReason: project.rejection_reason || '',
+                form: { step1: { location: project.location || '', city: project.city || '' }, step2: { selectedTypes: [] } },
+            })));
         } catch (e) {
             console.error('Failed to load rejected projects', e);
         } finally {
@@ -1225,6 +1270,7 @@ const PanelOverview = () => {
     // Initial load
     useEffect(() => { loadStats(); }, [loadStats]);
     useEffect(() => { loadFieldOfficers(); }, [loadFieldOfficers]);
+    useEffect(() => { loadProjectDevelopers(); }, [loadProjectDevelopers]);
 
     // Load officer details + leads when officer changes
     useEffect(() => {
@@ -1442,8 +1488,11 @@ const PanelOverview = () => {
 
     // Filtered Onboarding calculations
     const projectOnboardFiltered = projectOnboarding.filter(p =>
-        projectOnboardTab === 'done' ? p.isCompleted : !p.isCompleted
+        (!selectedProjectDeveloperId || p.developerId === selectedProjectDeveloperId) &&
+        (projectOnboardTab === 'done' ? p.isCompleted : !p.isCompleted)
     );
+    const projectLiveFiltered = liveProjects.filter((project) => !selectedProjectDeveloperId || project.developerId === selectedProjectDeveloperId);
+    const projectRejectedFiltered = rejectedProjects.filter((project) => !selectedProjectDeveloperId || project.developerId === selectedProjectDeveloperId);
     const selectedProjectOnboardItem = (() => {
         const base = projectOnboardFiltered.find(p => p.id === selectedProjectOnboardId) || projectOnboardFiltered[0];
         if (!base) return null;
@@ -1700,35 +1749,24 @@ const PanelOverview = () => {
 
                     {/* Tabs Section */}
                     <div className="space-y-4 rounded-[10px] border border-[#D8D2EB] bg-white p-5 shadow-[0_1px_0_rgba(33,24,88,0.03)]">
-                        {/* Main Tabs */}
-                        <div className="flex border-b border-[#EFEAF8] pb-1">
-                            <div className="flex gap-6">
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab('project')}
-                                    className={`pb-2 text-sm font-black uppercase tracking-[0.12em] transition-all relative ${activeTab === 'project'
-                                            ? 'text-[#2717D7]'
-                                            : 'text-[#5E5A71] hover:text-[#2717D7]'
-                                        }`}
-                                >
-                                    Project
-                                    {activeTab === 'project' && (
-                                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2717D7] rounded-full" />
-                                    )}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab('fieldOfficer')}
-                                    className={`pb-2 text-sm font-black uppercase tracking-[0.12em] transition-all relative ${activeTab === 'fieldOfficer'
-                                            ? 'text-[#2717D7]'
-                                            : 'text-[#5E5A71] hover:text-[#2717D7]'
-                                        }`}
-                                >
-                                    Field Officer
-                                    {activeTab === 'fieldOfficer' && (
-                                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2717D7] rounded-full" />
-                                    )}
-                                </button>
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#EFEAF8] pb-3">
+                            <div className="flex gap-2">
+                                {[
+                                    { id: 'fieldOfficer', label: 'Field Officer' },
+                                    { id: 'project', label: 'Project Panel' },
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`h-9 rounded-[6px] border px-3.5 text-xs font-black uppercase tracking-[0.12em] transition-all ${activeTab === tab.id
+                                            ? 'border-[#2717D7] bg-[#2717D7] text-white shadow-sm'
+                                            : 'border-[#D8D2EB] bg-white text-[#5E5A71] hover:border-[#2717D7] hover:text-[#2717D7]'
+                                            }`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
@@ -1780,6 +1818,24 @@ const PanelOverview = () => {
                                         <p className="text-xs font-black text-emerald-600 mt-0.5">{selectedOfficer?.status || 'Active'}</p>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'project' && (
+                            <div className="flex flex-col gap-2 border-b border-[#EFEAF8] pb-3 pt-1 sm:flex-row sm:items-center">
+                                <span className="text-xs font-black uppercase tracking-[0.1em] text-[#5E5A71]">Select Project Developer:</span>
+                                <select
+                                    value={selectedProjectDeveloperId}
+                                    onChange={(event) => {
+                                        setSelectedProjectDeveloperId(event.target.value);
+                                        setSelectedProjectOnboardId('');
+                                    }}
+                                    className="h-9 rounded-[6px] border border-[#D8D2EB] bg-white px-3 text-xs font-bold text-[#171327] focus:border-[#2717D7] focus:outline-none"
+                                >
+                                    {projectDevelopers.map((developer) => (
+                                        <option key={developer.id} value={developer.id}>{developer.name}</option>
+                                    ))}
+                                </select>
                             </div>
                         )}
 
@@ -1948,7 +2004,11 @@ const PanelOverview = () => {
                                         </div>
                                     ) : activeProjectSubTab === 'live' ? (
                                         <div className="pt-2">
-                                            {projectOnboarding.filter(p => p.isLive).length === 0 ? (
+                                            {liveLoading ? (
+                                                <div className="flex items-center justify-center py-12">
+                                                    <Loader2 size={24} className="animate-spin text-[#2717D7]" />
+                                                </div>
+                                            ) : projectLiveFiltered.length === 0 ? (
                                                 <div className="text-center py-12 px-4 border border-dashed border-[#D8D2EB] rounded-[10px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
                                                     <CheckCircle2 className="mx-auto h-12 w-12 text-[#A49DB8] mb-3 stroke-[1.5]" />
                                                     <h4 className="text-sm font-black text-[#171327] uppercase tracking-wider">No Live Projects</h4>
@@ -1958,7 +2018,7 @@ const PanelOverview = () => {
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                                    {projectOnboarding.filter(p => p.isLive).map((proj) => {
+                                                    {projectLiveFiltered.map((proj) => {
                                                         const selectedTypes = proj.form?.step2?.selectedTypes || [];
                                                         const city = proj.form?.step1?.city || '';
                                                         const location = proj.form?.step1?.location || '';
@@ -2017,7 +2077,7 @@ const PanelOverview = () => {
                                         </div>
                                     ) : activeProjectSubTab === 'rejected' ? (
                                         <div className="pt-2">
-                                            {projectOnboarding.filter(p => p.isRejected).length === 0 ? (
+                                            {projectRejectedFiltered.length === 0 ? (
                                                 <div className="text-center py-12 px-4 border border-dashed border-[#D8D2EB] rounded-[10px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
                                                     <ShieldAlert className="mx-auto h-12 w-12 text-[#A49DB8] mb-3 stroke-[1.5]" />
                                                     <h4 className="text-sm font-black text-[#171327] uppercase tracking-wider">No Rejected Projects</h4>
@@ -2027,7 +2087,7 @@ const PanelOverview = () => {
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                                    {projectOnboarding.filter(p => p.isRejected).map((proj) => {
+                                                    {projectRejectedFiltered.map((proj) => {
                                                         const selectedTypes = proj.form?.step2?.selectedTypes || [];
                                                         const city = proj.form?.step1?.city || '';
                                                         const location = proj.form?.step1?.location || '';
@@ -2615,7 +2675,7 @@ const PanelOverview = () => {
                             )}
 
                             {activeTab === 'fieldOfficer' && activeOfficerSubTab === 'projectLeads' && (
-                                <ProjectLeadPipeline />
+                                <ProjectLeadPipeline officerId={selectedOfficerId} />
                             )}
 
                         </div>

@@ -32,6 +32,9 @@ export const updateBuilderKycStatus = (id, body) =>
 export const fetchOnboardingProjects = (params = {}) =>
   apiRequest(`${BASE}/onboarding/projects${buildQS(params)}`);
 
+export const fetchProjectDevelopers = () =>
+  apiRequest(`${BASE}/onboarding/project-developers`);
+
 export const fetchProjectOnboardingDetails = (id, params = {}) =>
   apiRequest(`${BASE}/onboarding/projects/${id}${buildQS(params)}`);
 
